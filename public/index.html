@@ -1,0 +1,868 @@
+<!DOCTYPE html>
+<html lang="vi" class="dark">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Auto-Dev-Agent Dashboard</title>
+  <!-- Google Fonts -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+  <!-- Tailwind CSS CDN -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <!-- Lucide Icons -->
+  <script src="https://unpkg.com/lucide@latest"></script>
+  <!-- Marked.js for Markdown Preview -->
+  <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+  <!-- Highlight.js for Code Highlighting -->
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/atom-one-dark.min.css">
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
+  <script>
+    tailwind.config = {
+      darkMode: 'class',
+      theme: {
+        extend: {
+          fontFamily: {
+            sans: ['"Plus Jakarta Sans"', 'sans-serif'],
+            mono: ['"JetBrains Mono"', 'monospace'],
+          },
+          colors: {
+            brand: {
+              50: '#eef2ff',
+              500: '#6366f1',
+              600: '#4f46e5',
+              700: '#4338ca',
+            }
+          }
+        }
+      }
+    }
+  </script>
+  <style>
+    /* Custom scrollbar */
+    ::-webkit-scrollbar { width: 6px; height: 6px; }
+    ::-webkit-scrollbar-track { background: #0f172a; }
+    ::-webkit-scrollbar-thumb { background: #334155; border-radius: 4px; }
+    ::-webkit-scrollbar-thumb:hover { background: #475569; }
+    .prose-dark pre { background-color: #090d16 !important; border: 1px solid #1e293b; border-radius: 0.5rem; padding: 1rem; }
+    .prose-dark code { color: #38bdf8; font-family: 'JetBrains Mono', monospace; font-size: 0.875rem; }
+  </style>
+</head>
+<body class="bg-slate-950 text-slate-100 min-h-screen flex flex-col font-sans antialiased selection:bg-indigo-500 selection:text-white">
+
+  <!-- TOP NAVBAR -->
+  <header class="border-b border-slate-800/80 bg-slate-900/60 backdrop-blur-md sticky top-0 z-40">
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
+      <div class="flex items-center gap-3">
+        <div class="w-10 h-10 rounded-xl bg-gradient-to-tr from-indigo-600 via-indigo-500 to-cyan-400 flex items-center justify-center shadow-lg shadow-indigo-500/20 text-white">
+          <i data-lucide="bot" class="w-6 h-6"></i>
+        </div>
+        <div>
+          <div class="flex items-center gap-2">
+            <span class="font-extrabold text-lg tracking-tight bg-gradient-to-r from-white via-slate-200 to-indigo-300 bg-clip-text text-transparent">Auto-Dev-Agent</span>
+            <span class="text-[10px] font-semibold uppercase tracking-wider bg-indigo-500/10 text-indigo-400 border border-indigo-500/20 px-2 py-0.5 rounded-full">v1.0.0</span>
+          </div>
+          <p class="text-xs text-slate-400 hidden sm:block">Shared Context Engine + Pluggable Skills</p>
+        </div>
+      </div>
+
+      <!-- Live Status Badges -->
+      <div class="flex items-center gap-3">
+        <div id="moodleStatus" class="flex items-center gap-2 text-xs bg-indigo-950/70 border border-indigo-500/30 px-3 py-1.5 rounded-full text-indigo-300 font-semibold">
+          <span class="w-2 h-2 rounded-full bg-cyan-400"></span>
+          <span>Moodle 4.1 LMS</span>
+        </div>
+        <div id="llmStatus" class="flex items-center gap-2 text-xs bg-slate-800/80 border border-slate-700/60 px-3 py-1.5 rounded-full text-slate-300">
+          <span class="w-2 h-2 rounded-full bg-amber-400 animate-pulse"></span>
+          <span>Checking LLM...</span>
+        </div>
+        <div id="dbStatus" class="flex items-center gap-2 text-xs bg-slate-800/80 border border-slate-700/60 px-3 py-1.5 rounded-full text-slate-300">
+          <span class="w-2 h-2 rounded-full bg-slate-500"></span>
+          <span>DB Context</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- NAVIGATION TABS -->
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 flex space-x-1 border-t border-slate-800/40">
+      <button onclick="switchTab('skills')" id="tab-btn-skills" class="tab-btn px-4 py-3 text-sm font-medium border-b-2 border-indigo-500 text-indigo-400 flex items-center gap-2 transition">
+        <i data-lucide="sparkles" class="w-4 h-4"></i>
+        Skill Studio
+      </button>
+      <button onclick="switchTab('context')" id="tab-btn-context" class="tab-btn px-4 py-3 text-sm font-medium border-b-2 border-transparent text-slate-400 hover:text-slate-200 flex items-center gap-2 transition">
+        <i data-lucide="layers" class="w-4 h-4"></i>
+        Project Context (AST & DB)
+      </button>
+      <button onclick="switchTab('artifacts')" id="tab-btn-artifacts" class="tab-btn px-4 py-3 text-sm font-medium border-b-2 border-transparent text-slate-400 hover:text-slate-200 flex items-center gap-2 transition">
+        <i data-lucide="folder-archive" class="w-4 h-4"></i>
+        Generated Artifacts
+        <span id="artifactsCountBadge" class="bg-slate-800 text-xs px-2 py-0.5 rounded-full text-slate-400">0</span>
+      </button>
+      <button onclick="switchTab('docs')" id="tab-btn-docs" class="tab-btn px-4 py-3 text-sm font-medium border-b-2 border-transparent text-slate-400 hover:text-slate-200 flex items-center gap-2 transition">
+        <i data-lucide="book-open" class="w-4 h-4"></i>
+        Skills Guide & Docs
+      </button>
+    </div>
+  </header>
+
+  <!-- MAIN CONTAINER -->
+  <main class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 flex-1 w-full">
+
+    <!-- ========================================== -->
+    <!-- TAB 1: SKILL STUDIO -->
+    <!-- ========================================== -->
+    <section id="tab-skills" class="space-y-8">
+      <!-- Welcome Hero Banner -->
+      <div class="relative overflow-hidden rounded-2xl bg-gradient-to-r from-slate-900 via-indigo-950/40 to-slate-900 border border-slate-800 p-6 sm:p-8">
+        <div class="relative z-10 max-w-3xl space-y-2">
+          <h1 class="text-2xl sm:text-3xl font-extrabold text-white tracking-tight">Thực thi Kỹ năng AI Tự động</h1>
+          <p class="text-slate-400 text-sm sm:text-base leading-relaxed">
+            Chọn kỹ năng bên dưới để tự động tạo tài liệu Word (<span class="text-cyan-400 font-mono">.docx</span>), sinh mã nguồn đầy đủ các tầng kèm kiểm tra biên dịch TypeScript, hoặc thẩm định mã nguồn đối chiếu trực tiếp với DB Schema & Call-Graph.
+          </p>
+        </div>
+        <div class="absolute right-0 top-0 bottom-0 w-1/3 bg-gradient-to-l from-indigo-500/10 to-transparent pointer-events-none"></div>
+      </div>
+
+      <!-- Skills Filter & Search -->
+      <div class="flex flex-col sm:flex-row items-center justify-between gap-4">
+        <div class="flex items-center gap-2">
+          <button onclick="filterSkills('all')" class="filter-btn px-3 py-1.5 rounded-lg text-xs font-semibold bg-indigo-600 text-white">Tất cả</button>
+          <button onclick="filterSkills('built-in')" class="filter-btn px-3 py-1.5 rounded-lg text-xs font-semibold bg-slate-800 text-slate-400 hover:text-white">Built-in (3)</button>
+          <button onclick="filterSkills('markdown')" class="filter-btn px-3 py-1.5 rounded-lg text-xs font-semibold bg-slate-800 text-slate-400 hover:text-white">Dynamic Markdown</button>
+        </div>
+        <div class="text-xs text-slate-400">
+          <span id="skillsCounter">Đang tải...</span>
+        </div>
+      </div>
+
+      <!-- Skills Cards Grid -->
+      <div id="skillsGrid" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+        <!-- Rendered by JS -->
+      </div>
+    </section>
+
+    <!-- ========================================== -->
+    <!-- TAB 2: PROJECT CONTEXT EXPLORER -->
+    <!-- ========================================== -->
+    <section id="tab-context" class="space-y-6 hidden">
+      <div class="flex items-center justify-between">
+        <div>
+          <h2 class="text-2xl font-bold text-white tracking-tight">Project Context Explorer</h2>
+          <p class="text-sm text-slate-400">Ngữ cảnh bóc tách từ AST TypeScript, Database Schema & Git Diff.</p>
+        </div>
+        <button onclick="loadProjectContext()" class="flex items-center gap-2 px-3 py-2 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded-lg text-xs font-semibold border border-slate-700 transition">
+          <i data-lucide="refresh-cw" class="w-3.5 h-3.5"></i>
+          Quét lại Context
+        </button>
+      </div>
+
+      <!-- Stat Cards -->
+      <div class="grid grid-cols-2 sm:grid-cols-4 gap-4" id="contextStats">
+        <!-- Filled by JS -->
+      </div>
+
+      <!-- Context Tabs -->
+      <div class="bg-slate-900 border border-slate-800 rounded-2xl overflow-hidden shadow-xl">
+        <div class="flex border-b border-slate-800 bg-slate-900/80 px-4">
+          <button onclick="switchContextSubTab('endpoints')" id="subtab-btn-endpoints" class="px-4 py-3 text-xs font-bold text-indigo-400 border-b-2 border-indigo-500">API Endpoints (<span id="epCount">0</span>)</button>
+          <button onclick="switchContextSubTab('database')" id="subtab-btn-database" class="px-4 py-3 text-xs font-bold text-slate-400 hover:text-slate-200 border-b-2 border-transparent">Database Schema (<span id="tableCount">0</span>)</button>
+          <button onclick="switchContextSubTab('git')" id="subtab-btn-git" class="px-4 py-3 text-xs font-bold text-slate-400 hover:text-slate-200 border-b-2 border-transparent">Git Changes</button>
+          <button onclick="switchContextSubTab('conventions')" id="subtab-btn-conventions" class="px-4 py-3 text-xs font-bold text-slate-400 hover:text-slate-200 border-b-2 border-transparent">Conventions & Call-Graph</button>
+        </div>
+
+        <div class="p-6">
+          <!-- Subtab 1: Endpoints -->
+          <div id="subtab-endpoints" class="space-y-4">
+            <div class="overflow-x-auto">
+              <table class="w-full text-left text-xs">
+                <thead class="text-slate-400 uppercase bg-slate-800/50 border-b border-slate-800">
+                  <tr>
+                    <th class="py-3 px-4">Method</th>
+                    <th class="py-3 px-4">Path</th>
+                    <th class="py-3 px-4">Handler</th>
+                    <th class="py-3 px-4">Source File</th>
+                    <th class="py-3 px-4">Auth Guard</th>
+                  </tr>
+                </thead>
+                <tbody id="endpointsTableBody" class="divide-y divide-slate-800/60 font-mono">
+                  <!-- Filled by JS -->
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          <!-- Subtab 2: Database Schema -->
+          <div id="subtab-database" class="space-y-6 hidden">
+            <div id="dbSchemaContent" class="space-y-6">
+              <!-- Filled by JS -->
+            </div>
+          </div>
+
+          <!-- Subtab 3: Git Changes -->
+          <div id="subtab-git" class="space-y-4 hidden">
+            <div id="gitChangesContent" class="space-y-4">
+              <!-- Filled by JS -->
+            </div>
+          </div>
+
+          <!-- Subtab 4: Conventions -->
+          <div id="subtab-conventions" class="space-y-4 hidden">
+            <div id="conventionsContent" class="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <!-- Filled by JS -->
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ========================================== -->
+    <!-- TAB 3: GENERATED ARTIFACTS -->
+    <!-- ========================================== -->
+    <section id="tab-artifacts" class="space-y-6 hidden">
+      <div class="flex items-center justify-between">
+        <div>
+          <h2 class="text-2xl font-bold text-white tracking-tight">Kho Tài liệu & Mã nguồn Sinh ra</h2>
+          <p class="text-sm text-slate-400">Toàn bộ file Word (.docx), báo cáo Markdown (.md), hình vẽ sơ đồ (.png) trong thư mục output/.</p>
+        </div>
+        <button onclick="loadArtifacts()" class="flex items-center gap-2 px-3 py-2 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded-lg text-xs font-semibold border border-slate-700 transition">
+          <i data-lucide="refresh-cw" class="w-3.5 h-3.5"></i>
+          Làm mới
+        </button>
+      </div>
+
+      <div class="bg-slate-900 border border-slate-800 rounded-2xl overflow-hidden shadow-xl">
+        <div class="overflow-x-auto">
+          <table class="w-full text-left text-xs">
+            <thead class="text-slate-400 uppercase bg-slate-800/50 border-b border-slate-800">
+              <tr>
+                <th class="py-3 px-4">Tên File</th>
+                <th class="py-3 px-4">Định dạng</th>
+                <th class="py-3 px-4">Kích thước</th>
+                <th class="py-3 px-4">Thời gian tạo</th>
+                <th class="py-3 px-4 text-right">Thao tác</th>
+              </tr>
+            </thead>
+            <tbody id="artifactsTableBody" class="divide-y divide-slate-800/60 font-mono">
+              <!-- Filled by JS -->
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+
+    <!-- ========================================== -->
+    <!-- TAB 4: SKILLS GUIDE & DOCS -->
+    <!-- ========================================== -->
+    <section id="tab-docs" class="space-y-6 hidden max-w-4xl mx-auto">
+      <div class="bg-slate-900 border border-slate-800 rounded-2xl p-6 sm:p-8 space-y-6">
+        <h2 class="text-2xl font-bold text-white">🧩 Hướng dẫn Tạo Custom Markdown Skill (Hot-plug)</h2>
+        <p class="text-sm text-slate-300 leading-relaxed">
+          Hệ thống hỗ trợ cơ chế <strong>Dynamic Markdown Skills</strong> cho phép bạn bổ sung kỹ năng chuyên biệt mới chỉ bằng cách tạo một tệp tin <code class="bg-slate-800 text-cyan-400 px-2 py-0.5 rounded font-mono">SKILL.md</code> trong thư mục <code class="bg-slate-800 text-indigo-400 px-2 py-0.5 rounded font-mono">skills/&lt;tên-skill&gt;/SKILL.md</code>. Hệ thống sẽ tự động quét và nạp nóng vào Dashboard.
+        </p>
+
+        <div class="space-y-3">
+          <h3 class="text-sm font-semibold uppercase tracking-wider text-slate-400">Cấu trúc mẫu của một tệp SKILL.md:</h3>
+          <pre class="bg-slate-950 p-4 rounded-xl border border-slate-800 text-xs font-mono text-cyan-300 overflow-x-auto"><code>---
+id: database-performance-audit
+name: Audit Hiệu Năng Cơ Sở Dữ Liệu
+description: Phân tích truy vấn SQL, cảnh báo Full Table Scan và đề xuất Composite Index.
+version: 1.0.0
+tags:
+  - database
+  - performance
+author: Team DevOps
+systemInstruction: Bạn là Chuyên gia Tối ưu CSDL MySQL cấp cao. Hãy phân tích kỹ các truy vấn và schema.
+---
+
+# HƯỚNG DẪN THỰC THI (PROMPT INSTRUCTIONS)
+Đọc hiểu Unified Project Context (Tables, Columns, Indexes, Extracted SQLs).
+Tiến hành đối chiếu và xuất báo cáo Markdown chi tiết.</code></pre>
+        </div>
+
+        <div class="border-t border-slate-800 pt-4 flex justify-between items-center">
+          <span class="text-xs text-slate-400">Sau khi lưu file, quay lại Skill Studio và click "Làm mới"</span>
+          <button onclick="loadSkills(); switchTab('skills');" class="px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg text-xs font-bold transition">
+            Xem Kỹ Năng Đã Nạp
+          </button>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <!-- ========================================== -->
+  <!-- MODAL: SKILL EXECUTION DRAWER -->
+  <!-- ========================================== -->
+  <div id="executionModal" class="fixed inset-0 bg-slate-950/80 backdrop-blur-sm z-50 flex items-center justify-center p-4 hidden">
+    <div class="bg-slate-900 border border-slate-800 rounded-2xl w-full max-w-2xl max-h-[90vh] flex flex-col shadow-2xl overflow-hidden">
+      <!-- Modal Header -->
+      <div class="px-6 py-4 border-b border-slate-800 flex items-center justify-between bg-slate-900/90">
+        <div class="flex items-center gap-3">
+          <div id="modalIcon" class="w-8 h-8 rounded-lg bg-indigo-600/20 text-indigo-400 border border-indigo-500/30 flex items-center justify-center">
+            <i data-lucide="play" class="w-4 h-4"></i>
+          </div>
+          <div>
+            <h3 id="modalTitle" class="text-base font-bold text-white">Chạy Skill</h3>
+            <p id="modalSubtitle" class="text-xs text-slate-400">Nhập tham số thực thi</p>
+          </div>
+        </div>
+        <button onclick="closeExecutionModal()" class="text-slate-400 hover:text-white p-1 rounded-lg hover:bg-slate-800">
+          <i data-lucide="x" class="w-5 h-5"></i>
+        </button>
+      </div>
+
+      <!-- Modal Body (Form & Progress) -->
+      <div class="p-6 space-y-4 overflow-y-auto flex-1">
+        <input type="hidden" id="modalSkillId">
+
+        <div id="docTypeSelectGroup" class="hidden">
+          <label class="block text-xs font-semibold text-indigo-300 mb-1">Mẫu Tài liệu Moodle 4.1 cần sinh (Template Word):</label>
+          <select id="inputDocType" class="w-full bg-slate-950 border border-indigo-500/40 rounded-xl px-3.5 py-2.5 text-xs text-slate-100 focus:outline-none focus:border-indigo-500 transition">
+            <option value="all">📦 Tất cả 4 tài liệu (Trọn bộ Dự án Moodle 4.1)</option>
+            <option value="yeu-cau-nghiep-vu">📄 1. Phiếu yêu cầu nghiệp vụ (Phiếu yêu cầu nghiệp vụ.docx)</option>
+            <option value="dac-ta-chuc-nang">📋 2. Tài liệu đặc tả chức năng (Tài liệu đặc tả chức năng.docx)</option>
+            <option value="phan-tich-thiet-ke">🏗️ 3. Tài liệu phân tích thiết kế (Tài liệu phân tích thiết kế.docx)</option>
+            <option value="huong-dan-su-dung">📖 4. Hướng dẫn sử dụng (Hướng dẫn sử dụng.docx)</option>
+          </select>
+          <p class="text-[11px] text-slate-400 mt-1">Nội dung sinh ra sẽ được điền trực tiếp vào template Word công ty, giữ 100% định dạng gốc.</p>
+        </div>
+
+        <div>
+          <label class="block text-xs font-semibold text-slate-300 mb-1">Tên tính năng / Module (Feature Name):</label>
+          <input type="text" id="inputFeatureName" placeholder="Ví dụ: QuizProctoring, AttendanceQR, CustomCertificate" class="w-full bg-slate-950 border border-slate-800 rounded-xl px-3.5 py-2.5 text-xs text-slate-100 focus:outline-none focus:border-indigo-500 transition">
+        </div>
+
+        <div>
+          <label class="block text-xs font-semibold text-slate-300 mb-1">Mô tả Yêu cầu Chức năng (Requirements):</label>
+          <textarea id="inputRequirements" rows="3" placeholder="Ví dụ: Quản lý giỏ hàng, đặt hàng, thanh toán qua cổng VNPay, đối chiếu tồn kho..." class="w-full bg-slate-950 border border-slate-800 rounded-xl px-3.5 py-2.5 text-xs text-slate-100 focus:outline-none focus:border-indigo-500 transition"></textarea>
+        </div>
+
+        <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <div>
+            <label class="block text-xs font-semibold text-slate-300 mb-1">Target Module (Tùy chọn):</label>
+            <input type="text" id="inputModuleName" placeholder="Ví dụ: src/services/order.service.ts" class="w-full bg-slate-950 border border-slate-800 rounded-xl px-3.5 py-2.5 text-xs text-slate-100 focus:outline-none focus:border-indigo-500 transition">
+          </div>
+          <div>
+            <label class="block text-xs font-semibold text-slate-300 mb-1">Git Diff Target (Tùy chọn):</label>
+            <input type="text" id="inputGitDiff" placeholder="Ví dụ: HEAD~1, main, origin/dev" class="w-full bg-slate-950 border border-slate-800 rounded-xl px-3.5 py-2.5 text-xs text-slate-100 focus:outline-none focus:border-indigo-500 transition">
+          </div>
+        </div>
+
+        <div class="flex items-center gap-2 pt-1">
+          <input type="checkbox" id="inputDryRun" class="rounded bg-slate-950 border-slate-800 text-indigo-600 focus:ring-0 w-4 h-4">
+          <label for="inputDryRun" class="text-xs text-slate-300 select-none cursor-pointer">
+            Chế độ <strong>Dry-run</strong> (Chỉ kiểm tra và xuất bản nháp, không ghi đè mã nguồn thực tế)
+          </label>
+        </div>
+
+        <!-- Execution Progress Box -->
+        <div id="executionProgressBox" class="hidden p-4 rounded-xl bg-slate-950 border border-indigo-500/30 space-y-2">
+          <div class="flex items-center gap-3">
+            <div class="animate-spin text-indigo-400">
+              <i data-lucide="loader-2" class="w-5 h-5"></i>
+            </div>
+            <div class="text-xs">
+              <p class="font-semibold text-indigo-300" id="progressStatusText">Đang bóc tách AST và thực thi Skill...</p>
+              <p class="text-slate-400 text-[11px]">Quá trình này có thể mất vài giây để tổng hợp ngữ cảnh và render sơ đồ.</p>
+            </div>
+          </div>
+        </div>
+
+        <!-- Result Box -->
+        <div id="executionResultBox" class="hidden p-4 rounded-xl bg-slate-950 border border-slate-800 space-y-3">
+          <!-- Filled by JS -->
+        </div>
+      </div>
+
+      <!-- Modal Footer -->
+      <div class="px-6 py-4 border-t border-slate-800 bg-slate-900/90 flex items-center justify-end gap-3">
+        <button onclick="closeExecutionModal()" class="px-4 py-2 text-xs font-semibold text-slate-400 hover:text-white rounded-lg">Đóng</button>
+        <button id="btnExecuteSubmit" onclick="submitExecuteSkill()" class="px-5 py-2 bg-gradient-to-r from-indigo-600 to-indigo-500 hover:from-indigo-500 hover:to-indigo-400 text-white text-xs font-bold rounded-xl shadow-lg shadow-indigo-500/25 transition flex items-center gap-2">
+          <i data-lucide="play" class="w-3.5 h-3.5"></i>
+          Bắt đầu Thực thi
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ========================================== -->
+  <!-- MODAL: PREVIEW ARTIFACT (MD or PNG) -->
+  <!-- ========================================== -->
+  <div id="previewModal" class="fixed inset-0 bg-slate-950/80 backdrop-blur-sm z-50 flex items-center justify-center p-4 hidden">
+    <div class="bg-slate-900 border border-slate-800 rounded-2xl w-full max-w-4xl max-h-[90vh] flex flex-col shadow-2xl overflow-hidden">
+      <div class="px-6 py-4 border-b border-slate-800 flex items-center justify-between bg-slate-900/90">
+        <h3 id="previewTitle" class="text-sm font-bold text-white font-mono truncate">Xem trước</h3>
+        <button onclick="closePreviewModal()" class="text-slate-400 hover:text-white p-1 rounded-lg hover:bg-slate-800">
+          <i data-lucide="x" class="w-5 h-5"></i>
+        </button>
+      </div>
+      <div id="previewContent" class="p-6 overflow-y-auto flex-1 prose prose-invert prose-dark max-w-none text-xs">
+        <!-- Content rendered by JS -->
+      </div>
+    </div>
+  </div>
+
+  <!-- JAVASCRIPT LOGIC -->
+  <script>
+    let allSkills = [];
+    let currentFilter = 'all';
+
+    document.addEventListener('DOMContentLoaded', () => {
+      lucide.createIcons();
+      checkSystemHealth();
+      loadSkills();
+      loadProjectContext();
+      loadArtifacts();
+    });
+
+    // 1. Health check
+    async function checkSystemHealth() {
+      try {
+        const res = await fetch('/api/health');
+        const data = await res.json();
+        
+        const llmEl = document.getElementById('llmStatus');
+        if (data.llmConfigured) {
+          llmEl.innerHTML = `<span class="w-2 h-2 rounded-full bg-emerald-400"></span><span class="text-emerald-300">${data.model}</span>`;
+        } else {
+          llmEl.innerHTML = `<span class="w-2 h-2 rounded-full bg-amber-400"></span><span class="text-amber-300">Intelligent Fallback</span>`;
+        }
+      } catch (e) {
+        document.getElementById('llmStatus').innerHTML = `<span class="w-2 h-2 rounded-full bg-rose-400"></span><span class="text-rose-300">Server Offline</span>`;
+      }
+    }
+
+    // 2. Tab Navigation
+    function switchTab(tabId) {
+      document.querySelectorAll('.tab-btn').forEach(btn => {
+        btn.classList.remove('border-indigo-500', 'text-indigo-400');
+        btn.classList.add('border-transparent', 'text-slate-400');
+      });
+      document.getElementById(`tab-btn-${tabId}`).classList.add('border-indigo-500', 'text-indigo-400');
+      document.getElementById(`tab-btn-${tabId}`).classList.remove('border-transparent', 'text-slate-400');
+
+      ['skills', 'context', 'artifacts', 'docs'].forEach(id => {
+        const el = document.getElementById(`tab-${id}`);
+        if (el) el.classList.toggle('hidden', id !== tabId);
+      });
+      lucide.createIcons();
+    }
+
+    function switchContextSubTab(subId) {
+      ['endpoints', 'database', 'git', 'conventions'].forEach(id => {
+        const btn = document.getElementById(`subtab-btn-${id}`);
+        const el = document.getElementById(`subtab-${id}`);
+        if (btn) {
+          btn.classList.toggle('text-indigo-400', id === subId);
+          btn.classList.toggle('border-indigo-500', id === subId);
+          btn.classList.toggle('text-slate-400', id !== subId);
+          btn.classList.toggle('border-transparent', id !== subId);
+        }
+        if (el) el.classList.toggle('hidden', id !== subId);
+      });
+      lucide.createIcons();
+    }
+
+    // 3. Load & Render Skills
+    async function loadSkills() {
+      try {
+        const res = await fetch('/api/skills');
+        const data = await res.json();
+        allSkills = data.skills || [];
+        renderSkills();
+      } catch (e) {
+        console.error('Failed to load skills:', e);
+      }
+    }
+
+    function filterSkills(type) {
+      currentFilter = type;
+      document.querySelectorAll('.filter-btn').forEach(btn => {
+        btn.classList.remove('bg-indigo-600', 'text-white');
+        btn.classList.add('bg-slate-800', 'text-slate-400');
+      });
+      event.target.classList.add('bg-indigo-600', 'text-white');
+      event.target.classList.remove('bg-slate-800', 'text-slate-400');
+      renderSkills();
+    }
+
+    function renderSkills() {
+      const grid = document.getElementById('skillsGrid');
+      const filtered = currentFilter === 'all' 
+        ? allSkills 
+        : allSkills.filter(s => s.type === currentFilter);
+
+      document.getElementById('skillsCounter').textContent = `Hiển thị ${filtered.length} / ${allSkills.length} kỹ năng`;
+
+      grid.innerHTML = filtered.map(skill => {
+        const isBuiltIn = skill.type === 'built-in';
+        const badgeColor = isBuiltIn ? 'bg-indigo-500/10 text-indigo-400 border-indigo-500/20' : 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20';
+        const iconName = skill.id === 'doc-gen' ? 'file-text' : skill.id === 'code-gen' ? 'code-2' : skill.id === 'code-review' ? 'shield-check' : skill.id === 'sql-optimizer' ? 'database' : 'lock';
+
+        return `
+          <div class="group relative rounded-2xl bg-slate-900 border border-slate-800 hover:border-indigo-500/50 p-6 flex flex-col justify-between transition-all duration-200 hover:shadow-xl hover:shadow-indigo-500/5">
+            <div class="space-y-4">
+              <div class="flex items-start justify-between">
+                <div class="w-12 h-12 rounded-xl bg-slate-800/80 border border-slate-700/60 flex items-center justify-center text-indigo-400 group-hover:scale-105 transition">
+                  <i data-lucide="${iconName}" class="w-6 h-6"></i>
+                </div>
+                <span class="text-[10px] font-bold uppercase tracking-wider px-2.5 py-1 rounded-full border ${badgeColor}">
+                  ${skill.type}
+                </span>
+              </div>
+
+              <div>
+                <h3 class="text-base font-bold text-white group-hover:text-indigo-300 transition">${skill.name}</h3>
+                <span class="font-mono text-xs text-slate-500">${skill.id} (v${skill.version})</span>
+              </div>
+
+              <p class="text-xs text-slate-400 line-clamp-3 leading-relaxed">
+                ${skill.description}
+              </p>
+
+              ${skill.metadata?.tags?.length ? `
+                <div class="flex flex-wrap gap-1.5 pt-1">
+                  ${skill.metadata.tags.map(t => `<span class="text-[10px] bg-slate-800/60 text-slate-400 px-2 py-0.5 rounded-md">#${t}</span>`).join('')}
+                </div>
+              ` : ''}
+            </div>
+
+            <div class="pt-6 border-t border-slate-800/60 mt-4 flex items-center justify-between">
+              <span class="text-[11px] text-slate-500 font-mono">Shared Context Ready</span>
+              <button onclick="openExecutionModal('${skill.id}')" class="px-3.5 py-1.5 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg text-xs font-semibold flex items-center gap-1.5 transition shadow-sm">
+                <i data-lucide="play" class="w-3.5 h-3.5"></i>
+                Chạy Ngay
+              </button>
+            </div>
+          </div>
+        `;
+      }).join('');
+
+      lucide.createIcons();
+    }
+
+    // 4. Modal Execution
+    function openExecutionModal(skillId) {
+      const skill = allSkills.find(s => s.id === skillId);
+      if (!skill) return;
+
+      document.getElementById('modalSkillId').value = skill.id;
+      document.getElementById('modalTitle').textContent = `Chạy Kỹ năng: ${skill.name}`;
+      document.getElementById('modalSubtitle').textContent = `ID: ${skill.id} | Phiên bản: v${skill.version}`;
+
+      // Toggle Moodle 4.1 Doc Type selector
+      const docTypeGroup = document.getElementById('docTypeSelectGroup');
+      if (skill.id === 'doc-gen') {
+        docTypeGroup.classList.remove('hidden');
+      } else {
+        docTypeGroup.classList.add('hidden');
+      }
+
+      // Reset form
+      document.getElementById('inputFeatureName').value = '';
+      document.getElementById('inputRequirements').value = '';
+      document.getElementById('inputModuleName').value = '';
+      document.getElementById('inputGitDiff').value = '';
+      document.getElementById('inputDryRun').checked = false;
+
+      document.getElementById('executionProgressBox').classList.add('hidden');
+      document.getElementById('executionResultBox').classList.add('hidden');
+      document.getElementById('btnExecuteSubmit').disabled = false;
+
+      document.getElementById('executionModal').classList.remove('hidden');
+      lucide.createIcons();
+    }
+
+    function closeExecutionModal() {
+      document.getElementById('executionModal').classList.add('hidden');
+    }
+
+    async function submitExecuteSkill() {
+      const skillId = document.getElementById('modalSkillId').value;
+      const featureName = document.getElementById('inputFeatureName').value.trim();
+      const requirements = document.getElementById('inputRequirements').value.trim();
+      const moduleName = document.getElementById('inputModuleName').value.trim();
+      const gitDiffTarget = document.getElementById('inputGitDiff').value.trim();
+      const dryRun = document.getElementById('inputDryRun').checked;
+      const docType = document.getElementById('inputDocType').value;
+
+      const progressBox = document.getElementById('executionProgressBox');
+      const resultBox = document.getElementById('executionResultBox');
+      const submitBtn = document.getElementById('btnExecuteSubmit');
+
+      progressBox.classList.remove('hidden');
+      resultBox.classList.add('hidden');
+      submitBtn.disabled = true;
+
+      try {
+        const response = await fetch('/api/skills/execute', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            skillId,
+            input: {
+              featureName: featureName || undefined,
+              requirements: requirements || undefined,
+              moduleName: moduleName || undefined,
+              gitDiffTarget: gitDiffTarget || undefined,
+              dryRun,
+              customParams: {
+                docType,
+              }
+            }
+          })
+        });
+
+        const result = await response.json();
+        progressBox.classList.add('hidden');
+        resultBox.classList.remove('hidden');
+
+        if (result.success) {
+          resultBox.innerHTML = `
+            <div class="flex items-center gap-2 text-emerald-400 font-bold text-xs mb-2">
+              <i data-lucide="check-circle-2" class="w-4 h-4"></i>
+              <span>${result.message}</span>
+            </div>
+            ${result.artifacts && result.artifacts.length ? `
+              <div class="space-y-1.5 pt-2 border-t border-slate-800">
+                <p class="text-[11px] font-semibold text-slate-400 uppercase">Tệp sinh ra:</p>
+                ${result.artifacts.map(a => {
+                  const fileName = a.filePath.split(/[\\\\/]/).pop();
+                  const isDocx = fileName.endsWith('.docx');
+                  const isMd = fileName.endsWith('.md');
+                  return `
+                    <div class="flex items-center justify-between p-2 rounded-lg bg-slate-900 border border-slate-800 text-xs">
+                      <div class="flex items-center gap-2 truncate pr-2">
+                        <i data-lucide="${isDocx ? 'file-text' : isMd ? 'file-code' : 'image'}" class="w-4 h-4 text-indigo-400 shrink-0"></i>
+                        <span class="font-mono text-slate-200 truncate">${fileName}</span>
+                      </div>
+                      <div class="flex items-center gap-2 shrink-0">
+                        ${isMd ? `<button onclick="previewFile('${fileName}')" class="px-2 py-1 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded text-[11px]">Xem</button>` : ''}
+                        <a href="/output/${encodeURIComponent(fileName)}" download class="px-2.5 py-1 bg-indigo-600 hover:bg-indigo-500 text-white rounded text-[11px] font-semibold">Tải về</a>
+                      </div>
+                    </div>
+                  `;
+                }).join('')}
+              </div>
+            ` : ''}
+          `;
+          loadArtifacts();
+        } else {
+          resultBox.innerHTML = `
+            <div class="flex items-center gap-2 text-rose-400 font-bold text-xs">
+              <i data-lucide="alert-triangle" class="w-4 h-4"></i>
+              <span>Lỗi thực thi: ${result.error || result.message}</span>
+            </div>
+          `;
+        }
+      } catch (err) {
+        progressBox.classList.add('hidden');
+        resultBox.classList.remove('hidden');
+        resultBox.innerHTML = `
+          <div class="flex items-center gap-2 text-rose-400 font-bold text-xs">
+            <i data-lucide="alert-triangle" class="w-4 h-4"></i>
+            <span>Không thể kết nối API: ${err.message}</span>
+          </div>
+        `;
+      } finally {
+        submitBtn.disabled = false;
+        lucide.createIcons();
+      }
+    }
+
+    // 5. Load Project Context
+    async function loadProjectContext() {
+      try {
+        const res = await fetch('/api/context');
+        const ctx = await res.json();
+        if (!ctx.success) return;
+
+        // Stat Cards
+        document.getElementById('contextStats').innerHTML = `
+          <div class="bg-slate-900 border border-slate-800 p-4 rounded-xl">
+            <p class="text-xs text-slate-400">Source Files</p>
+            <p class="text-xl font-bold text-white mt-1">${ctx.code.filesScanned}</p>
+            <span class="text-[10px] text-slate-500">AST Parsed</span>
+          </div>
+          <div class="bg-slate-900 border border-slate-800 p-4 rounded-xl">
+            <p class="text-xs text-slate-400">API Endpoints</p>
+            <p class="text-xl font-bold text-indigo-400 mt-1">${ctx.code.endpointsCount}</p>
+            <span class="text-[10px] text-slate-500">${ctx.code.conventions.framework}</span>
+          </div>
+          <div class="bg-slate-900 border border-slate-800 p-4 rounded-xl">
+            <p class="text-xs text-slate-400">Database Tables</p>
+            <p class="text-xl font-bold text-cyan-400 mt-1">${ctx.db.tablesCount}</p>
+            <span class="text-[10px] text-slate-500">${ctx.db.isConnected ? 'Live MySQL' : 'Offline / DDL'}</span>
+          </div>
+          <div class="bg-slate-900 border border-slate-800 p-4 rounded-xl">
+            <p class="text-xs text-slate-400">Git Changes</p>
+            <p class="text-xl font-bold text-amber-400 mt-1">${ctx.git ? ctx.git.changedFilesCount : '0'}</p>
+            <span class="text-[10px] text-slate-500">${ctx.git ? ctx.git.branch : 'Clean'}</span>
+          </div>
+        `;
+
+        document.getElementById('epCount').textContent = ctx.code.endpointsCount;
+        document.getElementById('tableCount').textContent = ctx.db.tablesCount;
+
+        // Endpoints Table
+        const epBody = document.getElementById('endpointsTableBody');
+        if (ctx.code.endpoints.length === 0) {
+          epBody.innerHTML = `<tr><td colspan="5" class="py-4 text-center text-slate-500">Không tìm thấy Endpoint nào</td></tr>`;
+        } else {
+          epBody.innerHTML = ctx.code.endpoints.map(ep => {
+            const methodColor = ep.method === 'GET' ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20' : ep.method === 'POST' ? 'bg-blue-500/10 text-blue-400 border-blue-500/20' : ep.method === 'DELETE' ? 'bg-rose-500/10 text-rose-400 border-rose-500/20' : 'bg-amber-500/10 text-amber-400 border-amber-500/20';
+            return `
+              <tr class="hover:bg-slate-800/30">
+                <td class="py-2.5 px-4"><span class="px-2 py-0.5 rounded border text-[10px] font-bold ${methodColor}">${ep.method}</span></td>
+                <td class="py-2.5 px-4 text-slate-200 font-semibold">${ep.path}</td>
+                <td class="py-2.5 px-4 text-slate-400 truncate max-w-xs">${ep.handlerName}</td>
+                <td class="py-2.5 px-4 text-slate-500">${ep.filePath}:${ep.line}</td>
+                <td class="py-2.5 px-4">${ep.authRequired ? '<span class="text-emerald-400 font-bold">✓ Guarded</span>' : '<span class="text-slate-600">Public</span>'}</td>
+              </tr>
+            `;
+          }).join('');
+        }
+
+        // DB Schema
+        const dbContent = document.getElementById('dbSchemaContent');
+        if (ctx.db.tables.length === 0) {
+          dbContent.innerHTML = `<p class="text-xs text-slate-500 py-4 text-center">Chưa kết nối MySQL hoặc không tìm thấy file DDL migration trong thư mục.</p>`;
+        } else {
+          dbContent.innerHTML = ctx.db.tables.map(tbl => `
+            <div class="border border-slate-800 rounded-xl p-4 bg-slate-950 space-y-3">
+              <div class="flex items-center justify-between">
+                <span class="font-mono font-bold text-sm text-cyan-300">Table: ${tbl.name}</span>
+                <span class="text-xs text-slate-400">${tbl.columnsCount} columns | ${tbl.indexesCount} indexes</span>
+              </div>
+              <div class="flex flex-wrap gap-2 text-xs">
+                ${tbl.columns.map(c => `
+                  <span class="bg-slate-900 border border-slate-800 px-2.5 py-1 rounded-md text-slate-300">
+                    <strong>${c.name}</strong>: <span class="text-indigo-400">${c.type}</span>
+                    ${c.isPrimaryKey ? '<span class="text-amber-400 font-bold"> [PK]</span>' : ''}
+                  </span>
+                `).join('')}
+              </div>
+            </div>
+          `).join('');
+        }
+
+        // Git Changes
+        const gitContent = document.getElementById('gitChangesContent');
+        if (!ctx.git || ctx.git.changedFilesCount === 0) {
+          gitContent.innerHTML = `<p class="text-xs text-slate-500 py-4 text-center">Working tree sạch sẽ, không có thay đổi Git chưa commit.</p>`;
+        } else {
+          gitContent.innerHTML = `
+            <div class="p-3 rounded-lg bg-slate-950 border border-slate-800 text-xs font-mono text-slate-300">
+              Branch: <strong>${ctx.git.branch}</strong> (Commit: ${ctx.git.commitHash})
+            </div>
+            <div class="space-y-2">
+              ${ctx.git.changedFiles.map(f => `
+                <div class="flex items-center justify-between p-2.5 rounded-lg bg-slate-950 border border-slate-800 text-xs">
+                  <span class="font-mono text-slate-200">${f.filePath}</span>
+                  <div class="flex items-center gap-2 font-mono text-[11px]">
+                    <span class="text-emerald-400">+${f.additions}</span>
+                    <span class="text-rose-400">-${f.deletions}</span>
+                  </div>
+                </div>
+              `).join('')}
+            </div>
+          `;
+        }
+
+        // Conventions
+        const convEl = document.getElementById('conventionsContent');
+        convEl.innerHTML = `
+          <div class="p-4 rounded-xl bg-slate-950 border border-slate-800 space-y-2 text-xs">
+            <h4 class="font-bold text-slate-300">Quy chuẩn Kiến trúc & Framework</h4>
+            <p><span class="text-slate-500">Framework:</span> <strong class="text-indigo-400">${ctx.code.conventions.framework}</strong></p>
+            <p><span class="text-slate-500">Kiến trúc:</span> <strong class="text-cyan-400">${ctx.code.conventions.architecture}</strong></p>
+            <p><span class="text-slate-500">ORM / DB Tool:</span> <strong class="text-amber-400">${ctx.code.conventions.ormOrDbTool}</strong></p>
+          </div>
+          <div class="p-4 rounded-xl bg-slate-950 border border-slate-800 space-y-2 text-xs">
+            <h4 class="font-bold text-slate-300">Implicit Joins & SQL</h4>
+            <p><span class="text-slate-500">Implicit Joins:</span> <strong>${ctx.db.relationshipsCount}</strong></p>
+            <p><span class="text-slate-500">Extracted Raw SQLs:</span> <strong>${ctx.code.extractedSqlsCount}</strong></p>
+          </div>
+        `;
+      } catch (e) {
+        console.error('Failed to load context:', e);
+      }
+    }
+
+    // 6. Load Artifacts
+    async function loadArtifacts() {
+      try {
+        const res = await fetch('/api/artifacts');
+        const data = await res.json();
+        const artifacts = data.artifacts || [];
+
+        document.getElementById('artifactsCountBadge').textContent = artifacts.length;
+        const tbody = document.getElementById('artifactsTableBody');
+
+        if (artifacts.length === 0) {
+          tbody.innerHTML = `<tr><td colspan="5" class="py-6 text-center text-slate-500">Chưa có artifact nào trong thư mục output/</td></tr>`;
+          return;
+        }
+
+        tbody.innerHTML = artifacts.map(art => {
+          const isDocx = art.ext === '.docx';
+          const isMd = art.ext === '.md';
+          const isPng = art.ext === '.png';
+
+          return `
+            <tr class="hover:bg-slate-800/30">
+              <td class="py-3 px-4 font-semibold text-slate-200 flex items-center gap-2">
+                <i data-lucide="${isDocx ? 'file-text' : isMd ? 'file-code' : isPng ? 'image' : 'file'}" class="w-4 h-4 text-indigo-400 shrink-0"></i>
+                <span class="truncate max-w-sm">${art.name}</span>
+              </td>
+              <td class="py-3 px-4"><span class="px-2 py-0.5 rounded text-[10px] font-bold bg-slate-800 text-slate-300">${art.type}</span></td>
+              <td class="py-3 px-4 text-slate-400">${art.sizeFormatted}</td>
+              <td class="py-3 px-4 text-slate-500">${new Date(art.createdAt).toLocaleString('vi-VN')}</td>
+              <td class="py-3 px-4 text-right space-x-2">
+                ${isMd || isPng ? `<button onclick="previewFile('${art.name}')" class="px-2.5 py-1 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded text-[11px] font-semibold">Xem</button>` : ''}
+                <a href="${art.url}" download class="px-3 py-1 bg-indigo-600 hover:bg-indigo-500 text-white rounded text-[11px] font-semibold inline-block">Tải về</a>
+              </td>
+            </tr>
+          `;
+        }).join('');
+
+        lucide.createIcons();
+      } catch (e) {
+        console.error('Failed to load artifacts:', e);
+      }
+    }
+
+    // 7. Preview File (Markdown or PNG)
+    async function previewFile(fileName) {
+      const modal = document.getElementById('previewModal');
+      const title = document.getElementById('previewTitle');
+      const content = document.getElementById('previewContent');
+
+      title.textContent = `Xem trước: ${fileName}`;
+      content.innerHTML = `<div class="p-4 text-center text-slate-400">Đang tải nội dung...</div>`;
+      modal.classList.remove('hidden');
+
+      if (fileName.endsWith('.png')) {
+        content.innerHTML = `<div class="flex justify-center p-4 bg-slate-950 rounded-xl"><img src="/output/${encodeURIComponent(fileName)}" class="max-h-[70vh] object-contain rounded-lg"></div>`;
+        return;
+      }
+
+      try {
+        const res = await fetch(`/api/artifacts/content/${encodeURIComponent(fileName)}`);
+        const data = await res.json();
+        if (data.success) {
+          content.innerHTML = marked.parse(data.content);
+        } else {
+          content.innerHTML = `<div class="text-rose-400">Lỗi: ${data.error}</div>`;
+        }
+      } catch (e) {
+        content.innerHTML = `<div class="text-rose-400">Không thể đọc file: ${e.message}</div>`;
+      }
+    }
+
+    function closePreviewModal() {
+      document.getElementById('previewModal').classList.add('hidden');
+    }
+  </script>
+</body>
+</html>
+
