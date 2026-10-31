@@ -163,16 +163,50 @@
 
       <!-- Context Tabs -->
       <div class="bg-slate-900 border border-slate-800 rounded-2xl overflow-hidden shadow-xl">
-        <div class="flex border-b border-slate-800 bg-slate-900/80 px-4">
-          <button onclick="switchContextSubTab('endpoints')" id="subtab-btn-endpoints" class="px-4 py-3 text-xs font-bold text-indigo-400 border-b-2 border-indigo-500">API Endpoints (<span id="epCount">0</span>)</button>
-          <button onclick="switchContextSubTab('database')" id="subtab-btn-database" class="px-4 py-3 text-xs font-bold text-slate-400 hover:text-slate-200 border-b-2 border-transparent">Database Schema (<span id="tableCount">0</span>)</button>
-          <button onclick="switchContextSubTab('git')" id="subtab-btn-git" class="px-4 py-3 text-xs font-bold text-slate-400 hover:text-slate-200 border-b-2 border-transparent">Git Changes</button>
-          <button onclick="switchContextSubTab('conventions')" id="subtab-btn-conventions" class="px-4 py-3 text-xs font-bold text-slate-400 hover:text-slate-200 border-b-2 border-transparent">Conventions & Call-Graph</button>
+        <div class="flex border-b border-slate-800 bg-slate-900/80 px-4 overflow-x-auto">
+          <button onclick="switchContextSubTab('plugins')" id="subtab-btn-plugins" class="px-4 py-3 text-xs font-bold text-emerald-400 border-b-2 border-emerald-500 whitespace-nowrap flex items-center gap-1.5">
+            <i data-lucide="folder-git-2" class="w-3.5 h-3.5"></i>
+            Moodle Plugins (<span id="pluginsCount">0</span>)
+          </button>
+          <button onclick="switchContextSubTab('endpoints')" id="subtab-btn-endpoints" class="px-4 py-3 text-xs font-bold text-slate-400 hover:text-slate-200 border-b-2 border-transparent whitespace-nowrap">API Endpoints (<span id="epCount">0</span>)</button>
+          <button onclick="switchContextSubTab('database')" id="subtab-btn-database" class="px-4 py-3 text-xs font-bold text-slate-400 hover:text-slate-200 border-b-2 border-transparent whitespace-nowrap">Database Schema (<span id="tableCount">0</span>)</button>
+          <button onclick="switchContextSubTab('git')" id="subtab-btn-git" class="px-4 py-3 text-xs font-bold text-slate-400 hover:text-slate-200 border-b-2 border-transparent whitespace-nowrap">Git Changes</button>
+          <button onclick="switchContextSubTab('conventions')" id="subtab-btn-conventions" class="px-4 py-3 text-xs font-bold text-slate-400 hover:text-slate-200 border-b-2 border-transparent whitespace-nowrap">Conventions & Call-Graph</button>
         </div>
 
         <div class="p-6">
+          <!-- Subtab 0: Moodle Plugins -->
+          <div id="subtab-plugins" class="space-y-4">
+            <div class="flex flex-col sm:flex-row items-center justify-between gap-3">
+              <div class="relative w-full sm:w-96">
+                <i data-lucide="search" class="w-4 h-4 absolute left-3 top-2.5 text-slate-400"></i>
+                <input type="text" id="pluginSearchInput" oninput="filterPluginsList()" placeholder="Tìm kiếm plugin (tên, component, path)..." class="w-full bg-slate-950 border border-slate-800 rounded-xl pl-9 pr-3 py-2 text-xs text-slate-100 focus:outline-none focus:border-emerald-500 transition">
+              </div>
+              <div class="flex items-center gap-2">
+                <span class="text-xs text-slate-400" id="pluginsCounterText">Đang tải danh sách plugin...</span>
+              </div>
+            </div>
+            <div class="overflow-x-auto">
+              <table class="w-full text-left text-xs">
+                <thead class="text-slate-400 uppercase bg-slate-800/50 border-b border-slate-800">
+                  <tr>
+                    <th class="py-3 px-4">Thư mục Source</th>
+                    <th class="py-3 px-4">Component</th>
+                    <th class="py-3 px-4">Tên Plugin</th>
+                    <th class="py-3 px-4">Phiên bản</th>
+                    <th class="py-3 px-4">Đặc tính</th>
+                    <th class="py-3 px-4 text-right">Thao tác</th>
+                  </tr>
+                </thead>
+                <tbody id="pluginsTableBody" class="divide-y divide-slate-800/60 font-mono">
+                  <tr><td colspan="6" class="py-6 text-center text-slate-500">Đang tải dữ liệu plugins...</td></tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+
           <!-- Subtab 1: Endpoints -->
-          <div id="subtab-endpoints" class="space-y-4">
+          <div id="subtab-endpoints" class="space-y-4 hidden">
             <div class="overflow-x-auto">
               <table class="w-full text-left text-xs">
                 <thead class="text-slate-400 uppercase bg-slate-800/50 border-b border-slate-800">
@@ -315,15 +349,36 @@ Tiến hành đối chiếu và xuất báo cáo Markdown chi tiết.</code></pr
         <input type="hidden" id="modalSkillId">
 
         <div id="docTypeSelectGroup" class="hidden">
-          <label class="block text-xs font-semibold text-indigo-300 mb-1">Mẫu Tài liệu Moodle 4.1 cần sinh (Template Word):</label>
+          <label class="block text-xs font-semibold text-indigo-300 mb-1">Chọn Mẫu Tài liệu Word cần sinh (Template):</label>
           <select id="inputDocType" class="w-full bg-slate-950 border border-indigo-500/40 rounded-xl px-3.5 py-2.5 text-xs text-slate-100 focus:outline-none focus:border-indigo-500 transition">
-            <option value="all">📦 Tất cả 4 tài liệu (Trọn bộ Dự án Moodle 4.1)</option>
-            <option value="yeu-cau-nghiep-vu">📄 1. Phiếu yêu cầu nghiệp vụ (Phiếu yêu cầu nghiệp vụ.docx)</option>
-            <option value="dac-ta-chuc-nang">📋 2. Tài liệu đặc tả chức năng (Tài liệu đặc tả chức năng.docx)</option>
-            <option value="phan-tich-thiet-ke">🏗️ 3. Tài liệu phân tích thiết kế (Tài liệu phân tích thiết kế.docx)</option>
-            <option value="huong-dan-su-dung">📖 4. Hướng dẫn sử dụng (Hướng dẫn sử dụng.docx)</option>
+            <option value="dac-ta-chuc-nang" selected>📋 Tài liệu đặc tả chức năng (Tài liệu đặc tả chức năng.docx)</option>
+            <option value="phan-tich-thiet-ke">🏗️ Tài liệu phân tích thiết kế (Tài liệu phân tích thiết kế.docx)</option>
+            <option value="yeu-cau-nghiep-vu">📄 Phiếu yêu cầu nghiệp vụ (Phiếu yêu cầu nghiệp vụ.docx)</option>
+            <option value="huong-dan-su-dung">📖 Hướng dẫn sử dụng (Hướng dẫn sử dụng.docx)</option>
           </select>
-          <p class="text-[11px] text-slate-400 mt-1">Nội dung sinh ra sẽ được điền trực tiếp vào template Word công ty, giữ 100% định dạng gốc.</p>
+          <p class="text-[11px] text-slate-400 mt-1">Hệ thống sẽ chỉ sinh duy nhất 01 tệp Word (.docx) theo đúng mẫu template đã chọn (giữ 100% định dạng, tập trung câu từ và bảng kẻ).</p>
+        </div>
+
+        <!-- Moodle Plugin Selector in Modal -->
+        <div id="moodlePluginGroup" class="space-y-1.5">
+          <div class="flex items-center justify-between">
+            <label class="block text-xs font-semibold text-emerald-400">
+              <i data-lucide="folder-git-2" class="w-3.5 h-3.5 inline mr-1"></i>
+              Chọn Thư mục Plugin Moodle trong source (Khuyên dùng):
+            </label>
+            <span id="pluginsLoadingBadge" class="text-[10px] text-slate-400 hidden animate-pulse">Đang tải danh sách plugin...</span>
+          </div>
+          <select id="inputMoodlePlugin" onchange="onMoodlePluginSelected()" class="w-full bg-slate-950 border border-emerald-500/40 rounded-xl px-3.5 py-2.5 text-xs text-slate-100 focus:outline-none focus:border-emerald-500 transition">
+            <option value="">-- Tùy chỉnh (Không chọn plugin / Tự nhập tên tính năng bên dưới) --</option>
+          </select>
+          <div id="moodlePluginCard" class="hidden p-3 rounded-xl bg-slate-950/80 border border-emerald-500/30 text-xs space-y-1.5">
+            <div class="flex items-center justify-between">
+              <span id="pluginCardComp" class="font-mono font-bold text-emerald-300"></span>
+              <span id="pluginCardVer" class="text-[11px] bg-emerald-500/10 text-emerald-400 px-2 py-0.5 rounded-full border border-emerald-500/20 font-mono"></span>
+            </div>
+            <p id="pluginCardName" class="text-slate-200 font-semibold text-xs"></p>
+            <div id="pluginCardBadges" class="flex flex-wrap gap-1.5 pt-1 text-[10px]"></div>
+          </div>
         </div>
 
         <div>
@@ -385,18 +440,54 @@ Tiến hành đối chiếu và xuất báo cáo Markdown chi tiết.</code></pr
   </div>
 
   <!-- ========================================== -->
-  <!-- MODAL: PREVIEW ARTIFACT (MD or PNG) -->
+  <!-- MODAL: PREVIEW ARTIFACT (WORD, PDF, MD, PNG) -->
   <!-- ========================================== -->
-  <div id="previewModal" class="fixed inset-0 bg-slate-950/80 backdrop-blur-sm z-50 flex items-center justify-center p-4 hidden">
-    <div class="bg-slate-900 border border-slate-800 rounded-2xl w-full max-w-4xl max-h-[90vh] flex flex-col shadow-2xl overflow-hidden">
-      <div class="px-6 py-4 border-b border-slate-800 flex items-center justify-between bg-slate-900/90">
-        <h3 id="previewTitle" class="text-sm font-bold text-white font-mono truncate">Xem trước</h3>
-        <button onclick="closePreviewModal()" class="text-slate-400 hover:text-white p-1 rounded-lg hover:bg-slate-800">
-          <i data-lucide="x" class="w-5 h-5"></i>
-        </button>
+  <div id="previewModal" class="fixed inset-0 bg-slate-950/85 backdrop-blur-md z-50 flex items-center justify-center p-3 sm:p-6 hidden">
+    <div class="bg-slate-900 border border-slate-800 rounded-2xl w-full max-w-6xl h-[92vh] flex flex-col shadow-2xl overflow-hidden">
+      <!-- Modal Header -->
+      <div class="px-5 py-3.5 border-b border-slate-800 flex items-center justify-between bg-slate-900/95 shrink-0">
+        <div class="flex items-center gap-3 min-w-0 pr-4">
+          <div id="previewIconWrap" class="w-9 h-9 rounded-xl bg-sky-500/10 border border-sky-500/20 flex items-center justify-center text-sky-400 shrink-0">
+            <i data-lucide="file-text" class="w-5 h-5"></i>
+          </div>
+          <div class="min-w-0">
+            <div class="flex items-center gap-2">
+              <h3 id="previewTitle" class="text-sm font-bold text-white font-mono truncate">Xem trước tài liệu</h3>
+              <span id="previewBadge" class="px-2 py-0.5 rounded text-[10px] font-bold bg-sky-500/20 text-sky-300 border border-sky-500/30">Word .docx</span>
+            </div>
+            <p id="previewSubtitle" class="text-[11px] text-slate-400 truncate">Bản xem trước trực tiếp chất lượng cao chuẩn Microsoft Word OpenXML</p>
+          </div>
+        </div>
+        <div class="flex items-center gap-2 shrink-0">
+          <a id="btnPreviewNewTab" href="#" target="_blank" class="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 rounded-xl text-xs font-semibold flex items-center gap-1.5 transition">
+            <i data-lucide="external-link" class="w-3.5 h-3.5"></i>
+            <span class="hidden sm:inline">Mở tab mới</span>
+          </a>
+          <a id="btnPreviewDownload" href="#" download class="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl text-xs font-bold flex items-center gap-1.5 transition shadow-lg shadow-indigo-500/20">
+            <i data-lucide="download" class="w-3.5 h-3.5"></i>
+            <span class="hidden sm:inline">Tải về</span>
+          </a>
+          <button onclick="closePreviewModal()" class="text-slate-400 hover:text-white p-1.5 rounded-xl hover:bg-slate-800 transition">
+            <i data-lucide="x" class="w-5 h-5"></i>
+          </button>
+        </div>
       </div>
-      <div id="previewContent" class="p-6 overflow-y-auto flex-1 prose prose-invert prose-dark max-w-none text-xs">
-        <!-- Content rendered by JS -->
+
+      <!-- Modal Body -->
+      <div id="previewBodyContainer" class="flex-1 overflow-hidden relative bg-slate-950 flex flex-col">
+        <!-- Loader overlay -->
+        <div id="previewLoader" class="absolute inset-0 bg-slate-950/90 z-10 flex flex-col items-center justify-center space-y-3 text-slate-300">
+          <div class="animate-spin text-sky-400">
+            <i data-lucide="loader-2" class="w-8 h-8"></i>
+          </div>
+          <p class="text-xs font-semibold text-sky-300" id="previewLoaderText">Đang chuẩn bị bản xem trước trực tiếp...</p>
+          <p class="text-[11px] text-slate-500">Kết xuất OpenXML & font Times New Roman</p>
+        </div>
+
+        <!-- Dynamic Preview Content -->
+        <div id="previewContent" class="w-full h-full overflow-auto">
+          <!-- Loaded dynamically -->
+        </div>
       </div>
     </div>
   </div>
@@ -405,13 +496,32 @@ Tiến hành đối chiếu và xuất báo cáo Markdown chi tiết.</code></pr
   <script>
     let allSkills = [];
     let currentFilter = 'all';
+    let cachedMoodlePlugins = [];
+    let contextLoaded = false;
+
+    function safeCreateIcons() {
+      try {
+        if (typeof lucide !== 'undefined' && lucide && typeof lucide.createIcons === 'function') {
+          lucide.createIcons();
+        }
+      } catch (err) {
+        console.warn('Lucide icon render error:', err);
+      }
+    }
 
     document.addEventListener('DOMContentLoaded', () => {
-      lucide.createIcons();
+      safeCreateIcons();
       checkSystemHealth();
       loadSkills();
-      loadProjectContext();
+      loadMoodlePlugins();
       loadArtifacts();
+
+      if (window.location.hash) {
+        const hashTab = window.location.hash.replace('#', '');
+        if (['skills', 'context', 'artifacts', 'docs'].includes(hashTab)) {
+          switchTab(hashTab);
+        }
+      }
     });
 
     // 1. Health check
@@ -444,22 +554,143 @@ Tiến hành đối chiếu và xuất báo cáo Markdown chi tiết.</code></pr
         const el = document.getElementById(`tab-${id}`);
         if (el) el.classList.toggle('hidden', id !== tabId);
       });
-      lucide.createIcons();
+
+      if (tabId === 'context' && !contextLoaded) {
+        loadProjectContext();
+      }
+
+      safeCreateIcons();
     }
 
     function switchContextSubTab(subId) {
-      ['endpoints', 'database', 'git', 'conventions'].forEach(id => {
+      ['plugins', 'endpoints', 'database', 'git', 'conventions'].forEach(id => {
         const btn = document.getElementById(`subtab-btn-${id}`);
         const el = document.getElementById(`subtab-${id}`);
         if (btn) {
-          btn.classList.toggle('text-indigo-400', id === subId);
-          btn.classList.toggle('border-indigo-500', id === subId);
+          btn.classList.toggle('text-emerald-400', id === subId);
+          btn.classList.toggle('border-emerald-500', id === subId);
           btn.classList.toggle('text-slate-400', id !== subId);
           btn.classList.toggle('border-transparent', id !== subId);
         }
         if (el) el.classList.toggle('hidden', id !== subId);
       });
-      lucide.createIcons();
+      safeCreateIcons();
+    }
+
+    // 2.5 Moodle Plugins Management
+    async function loadMoodlePlugins() {
+      if (cachedMoodlePlugins.length > 0) return cachedMoodlePlugins;
+      const badge = document.getElementById('pluginsLoadingBadge');
+      if (badge) badge.classList.remove('hidden');
+
+      try {
+        const res = await fetch('/api/moodle/plugins');
+        const data = await res.json();
+        cachedMoodlePlugins = data.plugins || [];
+        populateMoodlePluginSelect(cachedMoodlePlugins);
+        renderMoodlePluginsTable(cachedMoodlePlugins);
+        const pCountEl = document.getElementById('pluginsCount');
+        if (pCountEl) pCountEl.textContent = cachedMoodlePlugins.length;
+        const pCounterText = document.getElementById('pluginsCounterText');
+        if (pCounterText) pCounterText.textContent = `Tổng cộng: ${cachedMoodlePlugins.length} plugins`;
+      } catch (e) {
+        console.error('Failed to load Moodle plugins:', e);
+      } finally {
+        if (badge) badge.classList.add('hidden');
+      }
+      return cachedMoodlePlugins;
+    }
+
+    function populateMoodlePluginSelect(plugins) {
+      const select = document.getElementById('inputMoodlePlugin');
+      if (!select) return;
+      const currentVal = select.value;
+      select.innerHTML = '<option value="">-- Tùy chỉnh (Không chọn plugin / Tự nhập tên bên dưới) --</option>' +
+        plugins.map(p => {
+          const isTh = p.path.includes('th_') || p.path.includes('th');
+          const prefix = isTh ? '⭐ [TNU] ' : '';
+          return `<option value="${p.path}">${prefix}${p.path} - ${p.name} (${p.component})</option>`;
+        }).join('');
+      if (currentVal) select.value = currentVal;
+    }
+
+    function renderMoodlePluginsTable(plugins) {
+      const tbody = document.getElementById('pluginsTableBody');
+      if (!tbody) return;
+      if (!plugins || plugins.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="6" class="py-6 text-center text-slate-500">Không tìm thấy plugin nào.</td></tr>';
+        return;
+      }
+
+      tbody.innerHTML = plugins.slice(0, 50).map(p => {
+        const isTh = p.path.includes('th_') || p.path.includes('th');
+        const badgeColor = isTh ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20' : 'bg-slate-800 text-slate-400 border-slate-700';
+        return `
+          <tr class="hover:bg-slate-800/30">
+            <td class="py-2.5 px-4 font-mono font-semibold text-cyan-300">
+              <span class="px-2 py-0.5 rounded border text-[10px] ${badgeColor} mr-1.5">${isTh ? 'TNU' : 'CORE'}</span>
+              ${p.path}
+            </td>
+            <td class="py-2.5 px-4 text-slate-300">${p.component}</td>
+            <td class="py-2.5 px-4 text-slate-200 font-bold truncate max-w-xs">${p.name}</td>
+            <td class="py-2.5 px-4 text-slate-400 font-mono">${p.version || 'N/A'}${p.release ? ` (${p.release})` : ''}</td>
+            <td class="py-2.5 px-4">
+              <div class="flex gap-1 text-[10px]">
+                ${p.hasServices ? '<span class="bg-indigo-500/20 text-indigo-300 px-1.5 py-0.5 rounded">WS/AJAX</span>' : ''}
+                ${p.hasXmlDb ? '<span class="bg-amber-500/20 text-amber-300 px-1.5 py-0.5 rounded">XMLDB</span>' : ''}
+                ${p.hasTasks ? '<span class="bg-sky-500/20 text-sky-300 px-1.5 py-0.5 rounded">Cron</span>' : ''}
+              </div>
+            </td>
+            <td class="py-2.5 px-4 text-right">
+              <button onclick="openExecutionModal('doc-gen', '${p.path}')" class="px-2.5 py-1 bg-indigo-600 hover:bg-indigo-500 text-white rounded text-[11px] font-semibold transition">
+                Sinh tài liệu
+              </button>
+            </td>
+          </tr>
+        `;
+      }).join('');
+      safeCreateIcons();
+    }
+
+    function filterPluginsList() {
+      const q = (document.getElementById('pluginSearchInput')?.value || '').toLowerCase().trim();
+      const filtered = q
+        ? cachedMoodlePlugins.filter(p => p.path.toLowerCase().includes(q) || p.component.toLowerCase().includes(q) || p.name.toLowerCase().includes(q))
+        : cachedMoodlePlugins;
+      renderMoodlePluginsTable(filtered);
+      const pCounterText = document.getElementById('pluginsCounterText');
+      if (pCounterText) pCounterText.textContent = `Hiển thị: ${Math.min(filtered.length, 50)} / ${filtered.length} plugins`;
+    }
+
+    function onMoodlePluginSelected() {
+      const select = document.getElementById('inputMoodlePlugin');
+      const val = select.value;
+      const card = document.getElementById('moodlePluginCard');
+      if (!val) {
+        card.classList.add('hidden');
+        return;
+      }
+      const plugin = cachedMoodlePlugins.find(p => p.path === val);
+      if (!plugin) return;
+
+      document.getElementById('pluginCardComp').textContent = plugin.component;
+      document.getElementById('pluginCardVer').textContent = `v${plugin.release || plugin.version || '1.0'}`;
+      document.getElementById('pluginCardName').textContent = plugin.name;
+
+      const badges = [];
+      badges.push(`<span class="bg-slate-800 text-slate-300 px-2 py-0.5 rounded">Phân loại: ${plugin.type}</span>`);
+      if (plugin.hasServices) badges.push(`<span class="bg-indigo-500/20 text-indigo-300 px-1.5 py-0.5 rounded">⚡ Web Services & AJAX</span>`);
+      if (plugin.hasXmlDb) badges.push(`<span class="bg-amber-500/20 text-amber-300 px-1.5 py-0.5 rounded">💾 XMLDB Database Table</span>`);
+      if (plugin.hasTasks) badges.push(`<span class="bg-sky-500/20 text-sky-300 px-1.5 py-0.5 rounded">⏱️ Scheduled Task (Cron)</span>`);
+      document.getElementById('pluginCardBadges').innerHTML = badges.join('');
+      card.classList.remove('hidden');
+
+      // Auto populate feature name & requirements if user hasn't typed custom ones
+      document.getElementById('inputFeatureName').value = `${plugin.name} (${plugin.component})`;
+      const reqInput = document.getElementById('inputRequirements');
+      if (!reqInput.value || reqInput.value.startsWith('Phát triển và hoàn thiện phân hệ') || reqInput.value.startsWith('Phát triển module')) {
+        reqInput.value = plugin.description || `Phát triển và hoàn thiện phân hệ ${plugin.name} (${plugin.component}) trên nền tảng Moodle 4.1 LMS TNU.`;
+      }
     }
 
     // 3. Load & Render Skills
@@ -537,11 +768,11 @@ Tiến hành đối chiếu và xuất báo cáo Markdown chi tiết.</code></pr
         `;
       }).join('');
 
-      lucide.createIcons();
+      safeCreateIcons();
     }
 
     // 4. Modal Execution
-    function openExecutionModal(skillId) {
+    async function openExecutionModal(skillId, preselectedPluginPath = null) {
       const skill = allSkills.find(s => s.id === skillId);
       if (!skill) return;
 
@@ -564,12 +795,24 @@ Tiến hành đối chiếu và xuất báo cáo Markdown chi tiết.</code></pr
       document.getElementById('inputGitDiff').value = '';
       document.getElementById('inputDryRun').checked = false;
 
+      // Ensure plugins are loaded
+      await loadMoodlePlugins();
+
+      const pluginSelect = document.getElementById('inputMoodlePlugin');
+      if (preselectedPluginPath && pluginSelect) {
+        pluginSelect.value = preselectedPluginPath;
+        onMoodlePluginSelected();
+      } else if (pluginSelect) {
+        pluginSelect.value = '';
+        document.getElementById('moodlePluginCard').classList.add('hidden');
+      }
+
       document.getElementById('executionProgressBox').classList.add('hidden');
       document.getElementById('executionResultBox').classList.add('hidden');
       document.getElementById('btnExecuteSubmit').disabled = false;
 
       document.getElementById('executionModal').classList.remove('hidden');
-      lucide.createIcons();
+      safeCreateIcons();
     }
 
     function closeExecutionModal() {
@@ -584,6 +827,7 @@ Tiến hành đối chiếu và xuất báo cáo Markdown chi tiết.</code></pr
       const gitDiffTarget = document.getElementById('inputGitDiff').value.trim();
       const dryRun = document.getElementById('inputDryRun').checked;
       const docType = document.getElementById('inputDocType').value;
+      const pluginPath = document.getElementById('inputMoodlePlugin')?.value || '';
 
       const progressBox = document.getElementById('executionProgressBox');
       const resultBox = document.getElementById('executionResultBox');
@@ -607,6 +851,7 @@ Tiến hành đối chiếu và xuất báo cáo Markdown chi tiết.</code></pr
               dryRun,
               customParams: {
                 docType,
+                pluginPath: pluginPath || undefined,
               }
             }
           })
@@ -635,9 +880,13 @@ Tiến hành đối chiếu và xuất báo cáo Markdown chi tiết.</code></pr
                         <i data-lucide="${isDocx ? 'file-text' : isMd ? 'file-code' : 'image'}" class="w-4 h-4 text-indigo-400 shrink-0"></i>
                         <span class="font-mono text-slate-200 truncate">${fileName}</span>
                       </div>
-                      <div class="flex items-center gap-2 shrink-0">
-                        ${isMd ? `<button onclick="previewFile('${fileName}')" class="px-2 py-1 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded text-[11px]">Xem</button>` : ''}
-                        <a href="/output/${encodeURIComponent(fileName)}" download class="px-2.5 py-1 bg-indigo-600 hover:bg-indigo-500 text-white rounded text-[11px] font-semibold">Tải về</a>
+                      <div class="flex items-center gap-1.5 shrink-0">
+                        <button onclick="previewFile('${fileName}')" class="px-2 py-1 bg-sky-600/20 hover:bg-sky-600 text-sky-300 hover:text-white border border-sky-500/30 rounded text-[11px] font-semibold transition flex items-center gap-1">
+                          <i data-lucide="eye" class="w-3 h-3"></i> Xem trực tiếp
+                        </button>
+                        <a href="/output/${encodeURIComponent(fileName)}" download class="px-2.5 py-1 bg-indigo-600 hover:bg-indigo-500 text-white rounded text-[11px] font-semibold transition flex items-center gap-1">
+                          <i data-lucide="download" class="w-3 h-3"></i> Tải về
+                        </a>
                       </div>
                     </div>
                   `;
@@ -665,7 +914,7 @@ Tiến hành đối chiếu và xuất báo cáo Markdown chi tiết.</code></pr
         `;
       } finally {
         submitBtn.disabled = false;
-        lucide.createIcons();
+        safeCreateIcons();
       }
     }
 
@@ -817,46 +1066,116 @@ Tiến hành đối chiếu và xuất báo cáo Markdown chi tiết.</code></pr
               <td class="py-3 px-4"><span class="px-2 py-0.5 rounded text-[10px] font-bold bg-slate-800 text-slate-300">${art.type}</span></td>
               <td class="py-3 px-4 text-slate-400">${art.sizeFormatted}</td>
               <td class="py-3 px-4 text-slate-500">${new Date(art.createdAt).toLocaleString('vi-VN')}</td>
-              <td class="py-3 px-4 text-right space-x-2">
-                ${isMd || isPng ? `<button onclick="previewFile('${art.name}')" class="px-2.5 py-1 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded text-[11px] font-semibold">Xem</button>` : ''}
-                <a href="${art.url}" download class="px-3 py-1 bg-indigo-600 hover:bg-indigo-500 text-white rounded text-[11px] font-semibold inline-block">Tải về</a>
+              <td class="py-3 px-4 text-right space-x-2 whitespace-nowrap">
+                <button onclick="previewFile('${art.name}')" class="px-2.5 py-1.5 bg-sky-600/20 hover:bg-sky-600 text-sky-300 hover:text-white border border-sky-500/30 rounded-lg text-xs font-semibold transition inline-flex items-center gap-1.5 shadow-sm">
+                  <i data-lucide="eye" class="w-3.5 h-3.5"></i>
+                  <span>Xem trực tiếp</span>
+                </button>
+                <a href="${art.url}" download class="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg text-xs font-bold inline-flex items-center gap-1.5 transition shadow-sm">
+                  <i data-lucide="download" class="w-3.5 h-3.5"></i>
+                  <span>Tải về</span>
+                </a>
               </td>
             </tr>
           `;
         }).join('');
 
-        lucide.createIcons();
+        safeCreateIcons();
       } catch (e) {
         console.error('Failed to load artifacts:', e);
       }
     }
 
-    // 7. Preview File (Markdown or PNG)
+    // 7. Preview File (Word .docx, PDF, Markdown, PNG, Code)
     async function previewFile(fileName) {
       const modal = document.getElementById('previewModal');
       const title = document.getElementById('previewTitle');
+      const subtitle = document.getElementById('previewSubtitle');
+      const badge = document.getElementById('previewBadge');
       const content = document.getElementById('previewContent');
+      const loader = document.getElementById('previewLoader');
+      const btnNewTab = document.getElementById('btnPreviewNewTab');
+      const btnDownload = document.getElementById('btnPreviewDownload');
+      const iconWrap = document.getElementById('previewIconWrap');
 
-      title.textContent = `Xem trước: ${fileName}`;
-      content.innerHTML = `<div class="p-4 text-center text-slate-400">Đang tải nội dung...</div>`;
+      title.textContent = fileName;
+      btnDownload.href = `/output/${encodeURIComponent(fileName)}`;
+      btnDownload.download = fileName;
+
       modal.classList.remove('hidden');
+      loader.classList.remove('hidden');
+      content.innerHTML = '';
 
-      if (fileName.endsWith('.png')) {
-        content.innerHTML = `<div class="flex justify-center p-4 bg-slate-950 rounded-xl"><img src="/output/${encodeURIComponent(fileName)}" class="max-h-[70vh] object-contain rounded-lg"></div>`;
-        return;
-      }
+      const isDocx = fileName.toLowerCase().endsWith('.docx');
+      const isPdf = fileName.toLowerCase().endsWith('.pdf');
+      const isPng = fileName.toLowerCase().endsWith('.png');
+      const isMd = fileName.toLowerCase().endsWith('.md');
 
-      try {
-        const res = await fetch(`/api/artifacts/content/${encodeURIComponent(fileName)}`);
-        const data = await res.json();
-        if (data.success) {
-          content.innerHTML = marked.parse(data.content);
-        } else {
-          content.innerHTML = `<div class="text-rose-400">Lỗi: ${data.error}</div>`;
+      const previewUrl = `/api/artifacts/preview/${encodeURIComponent(fileName)}`;
+      btnNewTab.href = previewUrl;
+
+      if (isDocx || isPdf) {
+        badge.textContent = isDocx ? 'Word .docx' : 'PDF Document';
+        badge.className = 'px-2 py-0.5 rounded text-[10px] font-bold bg-sky-500/20 text-sky-300 border border-sky-500/30';
+        subtitle.textContent = isDocx ? 'Xem trực tiếp tài liệu Word OpenXML chất lượng cao' : 'Tài liệu PDF chuẩn';
+        iconWrap.innerHTML = '<i data-lucide="file-text" class="w-5 h-5 text-sky-400"></i>';
+
+        content.innerHTML = `
+          <iframe src="${previewUrl}" class="w-full h-full border-0 bg-slate-900" onload="document.getElementById('previewLoader')?.classList.add('hidden')"></iframe>
+        `;
+      } else if (isPng) {
+        badge.textContent = 'Sơ đồ PNG';
+        badge.className = 'px-2 py-0.5 rounded text-[10px] font-bold bg-indigo-500/20 text-indigo-300 border border-indigo-500/30';
+        subtitle.textContent = 'Hình vẽ sơ đồ kiến trúc / quy trình luồng xử lý';
+        iconWrap.innerHTML = '<i data-lucide="image" class="w-5 h-5 text-indigo-400"></i>';
+
+        content.innerHTML = `
+          <div class="flex items-center justify-center p-6 h-full bg-slate-950 overflow-auto">
+            <img src="${previewUrl}" class="max-h-full max-w-full object-contain rounded-xl shadow-2xl border border-slate-800" onload="document.getElementById('previewLoader')?.classList.add('hidden')">
+          </div>
+        `;
+      } else if (isMd) {
+        badge.textContent = 'Markdown';
+        badge.className = 'px-2 py-0.5 rounded text-[10px] font-bold bg-emerald-500/20 text-emerald-300 border border-emerald-500/30';
+        subtitle.textContent = 'Báo cáo kỹ thuật định dạng Markdown';
+        iconWrap.innerHTML = '<i data-lucide="file-code" class="w-5 h-5 text-emerald-400"></i>';
+
+        try {
+          const res = await fetch(`/api/artifacts/content/${encodeURIComponent(fileName)}`);
+          const data = await res.json();
+          loader.classList.add('hidden');
+          if (data.success) {
+            content.innerHTML = `
+              <div class="p-8 prose prose-invert prose-dark max-w-4xl mx-auto text-xs leading-relaxed overflow-auto">
+                ${marked.parse(data.content)}
+              </div>
+            `;
+          } else {
+            content.innerHTML = `<div class="p-8 text-rose-400">Lỗi: ${data.error}</div>`;
+          }
+        } catch (e) {
+          loader.classList.add('hidden');
+          content.innerHTML = `<div class="p-8 text-rose-400">Không thể đọc file: ${e.message}</div>`;
         }
-      } catch (e) {
-        content.innerHTML = `<div class="text-rose-400">Không thể đọc file: ${e.message}</div>`;
+      } else {
+        badge.textContent = 'Code / File';
+        badge.className = 'px-2 py-0.5 rounded text-[10px] font-bold bg-slate-700 text-slate-300';
+        subtitle.textContent = 'Xem trước tệp dữ liệu';
+        iconWrap.innerHTML = '<i data-lucide="file" class="w-5 h-5 text-slate-400"></i>';
+
+        try {
+          const res = await fetch(`/api/artifacts/content/${encodeURIComponent(fileName)}`);
+          const data = await res.json();
+          loader.classList.add('hidden');
+          const safeContent = data.content ? data.content.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;') : '';
+          content.innerHTML = `<pre class="p-6 text-xs text-slate-300 font-mono overflow-auto h-full">${safeContent}</pre>`;
+        } catch (e) {
+          loader.classList.add('hidden');
+          content.innerHTML = `<div class="p-8 text-rose-400">Lỗi: ${e.message}</div>`;
+        }
       }
+
+      safeCreateIcons();
     }
 
     function closePreviewModal() {

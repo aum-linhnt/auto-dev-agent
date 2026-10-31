@@ -91,6 +91,103 @@ export interface CodeContext {
 }
 
 // ==========================================
+// Moodle Plugin Context Types
+// ==========================================
+
+export interface MoodlePluginSummary {
+  path: string;
+  component: string;
+  name: string;
+  version: string;
+  release?: string;
+  type: string;
+  description?: string;
+  hasXmlDb: boolean;
+  hasServices: boolean;
+  hasTasks: boolean;
+}
+
+export interface MoodlePluginCapability {
+  name: string;
+  captype: string;
+  contextlevel: string;
+  archetypes: Record<string, string>;
+  description: string;
+}
+
+export interface MoodlePluginService {
+  name: string;
+  classname: string;
+  methodname: string;
+  description: string;
+  type: string;
+  isAjax: boolean;
+}
+
+export interface MoodlePluginTask {
+  classname: string;
+  schedule: string;
+  blocking: boolean;
+}
+
+export interface MoodlePluginTableField {
+  name: string;
+  type: string;
+  length?: string;
+  notNull: boolean;
+  defaultValue?: string;
+  isPrimaryKey?: boolean;
+  comment?: string;
+}
+
+export interface MoodlePluginTable {
+  name: string;
+  comment?: string;
+  fields: MoodlePluginTableField[];
+}
+
+export interface MoodlePluginClass {
+  name: string;
+  namespace: string;
+  filePath: string;
+  extends?: string;
+  methods: Array<{
+    name: string;
+    parameters: string;
+    docComment?: string;
+  }>;
+}
+
+export interface MoodlePluginSetting {
+  name: string;
+  title: string;
+  description: string;
+  type: string;
+}
+
+export interface MoodlePluginDetail extends MoodlePluginSummary {
+  requires?: string;
+  maturity?: string;
+  capabilities: MoodlePluginCapability[];
+  services: MoodlePluginService[];
+  tasks: MoodlePluginTask[];
+  tables: MoodlePluginTable[];
+  classes: MoodlePluginClass[];
+  templates: string[];
+  amdModules: string[];
+  settings: MoodlePluginSetting[];
+  langStrings: Record<string, string>;
+  securityChecks: {
+    requiresLogin: boolean;
+    capabilitiesChecked: string[];
+    hasSesskeyCheck: boolean;
+    requiredParams: string[];
+  };
+  referencedTables: string[];
+  sourceSummary: string;
+}
+
+// ==========================================
 // Database & SQL Context Types
 // ==========================================
 

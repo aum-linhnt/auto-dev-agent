@@ -1,4 +1,5 @@
 import path from 'path';
+import fs from 'fs';
 import fg from 'fast-glob';
 import { Project, SyntaxKind, Node, CallExpression, MethodDeclaration, FunctionDeclaration } from 'ts-morph';
 import {
@@ -23,8 +24,12 @@ export class CodeAnalyzer {
    * Run full AST and code analysis on project files
    */
   public async analyze(): Promise<CodeContext> {
-    const filePatterns = ['**/*.ts', '**/*.js', '**/*.tsx', '**/*.jsx'];
-    const ignorePatterns = [
+    const isMoodle =
+      fs.existsSync(path.join(this.projectRoot, 'version.php')) ||
+      fs.existsSync(path.join(this.projectRoot, 'config.php')) ||
+      fs.existsSync(path.join(this.projectRoot, 'config-dist.php'));
+
+    const baseIgnore = [
       '**/node_modules/**',
       '**/dist/**',
       '**/build/**',
@@ -35,11 +40,44 @@ export class CodeAnalyzer {
       '**/*.d.ts',
     ];
 
-    const filePaths = await fg(filePatterns, {
+    const ignorePatterns = isMoodle
+      ? [
+          ...baseIgnore,
+          '**/yui/**',
+          '**/lib/**',
+          '**/vendor/**',
+          '**/cache/**',
+          '**/localcache/**',
+          '**/temp/**',
+          '**/trashdir/**',
+          '**/theme/**',
+          '**/pix/**',
+          '**/filter/**',
+          '**/*.min.js',
+          '**/amd/build/**',
+        ]
+      : baseIgnore;
+
+    const filePatterns = isMoodle
+      ? ['local/**/*.js', '**/amd/src/**/*.js', 'admin/tool/**/*.js', 'blocks/**/*.js', '**/*.ts']
+      : ['**/*.ts', '**/*.js', '**/*.tsx', '**/*.jsx'];
+
+    let filePaths = await fg(filePatterns, {
       cwd: this.projectRoot,
       ignore: ignorePatterns,
       absolute: true,
     });
+
+    // In large codebases (e.g. Moodle LMS), limit AST parsing to top relevant files to avoid memory pressure
+    if (isMoodle && filePaths.length > 150) {
+      filePaths = filePaths
+        .sort((a, b) => {
+          const aScore = a.includes('local/th_') ? 2 : a.includes('amd/src') ? 1 : 0;
+          const bScore = b.includes('local/th_') ? 2 : b.includes('amd/src') ? 1 : 0;
+          return bScore - aScore;
+        })
+        .slice(0, 150);
+    }
 
     const project = new Project({
       skipAddingFilesFromTsConfig: true,
@@ -50,7 +88,11 @@ export class CodeAnalyzer {
 
     // Add source files
     for (const filePath of filePaths) {
-      project.addSourceFileAtPath(filePath);
+      try {
+        project.addSourceFileAtPath(filePath);
+      } catch {
+        // Skip files that fail AST parsing
+      }
     }
 
     const endpoints: EndpointInfo[] = [];
@@ -78,8 +120,21 @@ export class CodeAnalyzer {
       this.extractSqlStrings(sourceFile, filePath, extractedSqls);
     }
 
-    const conventions = this.detectConventions(sourceFiles, endpoints, extractedSqls);
-    const projectSummary = this.buildSummary(filePaths.length, endpoints, dtos, classes, conventions);
+    let extraFilesScanned = 0;
+    // 5. Deep Moodle PHP Analysis (Web Services, $DB queries, classes)
+    if (isMoodle) {
+      extraFilesScanned = await this.extractMoodleContext(
+        endpoints,
+        classes,
+        functions,
+        callGraph,
+        extractedSqls
+      );
+    }
+
+    const totalFilesScanned = filePaths.length + extraFilesScanned;
+    const conventions = this.detectConventions(sourceFiles, endpoints, extractedSqls, isMoodle);
+    const projectSummary = this.buildSummary(totalFilesScanned, endpoints, dtos, classes, conventions);
 
     return {
       endpoints,
@@ -89,9 +144,154 @@ export class CodeAnalyzer {
       callGraph,
       conventions,
       extractedSqls,
-      filesScanned: filePaths.length,
+      filesScanned: totalFilesScanned,
       projectSummary,
     };
+  }
+
+  /**
+   * Deep Moodle PHP analysis: Web Services, $DB queries, classes & functions
+   */
+  private async extractMoodleContext(
+    endpoints: EndpointInfo[],
+    classes: ClassInfo[],
+    functions: FunctionInfo[],
+    callGraph: CallGraphEdge[],
+    extractedSqls: ExtractedSql[]
+  ): Promise<number> {
+    let filesScanned = 0;
+
+    // 1. Scan Moodle db/services.php for Web Services and AJAX Endpoints
+    const serviceFiles = await fg(['**/db/services.php'], {
+      cwd: this.projectRoot,
+      ignore: ['**/node_modules/**', '**/dist/**', '**/cache/**'],
+      absolute: true,
+    });
+
+    for (const sf of serviceFiles) {
+      try {
+        const relPath = path.relative(this.projectRoot, sf);
+        const content = fs.readFileSync(sf, 'utf-8');
+        const funcRegex = /'([a-zA-Z0-9_]+)'\s*=>\s*\[\s*([\s\S]*?)\]\s*,/g;
+        let match;
+        while ((match = funcRegex.exec(content)) !== null) {
+          const fnName = match[1];
+          const body = match[2];
+          const classMatch = body.match(/'classname'\s*=>\s*['"]([^'"]+)['"]/);
+          const methodMatch = body.match(/'methodname'\s*=>\s*['"]([^'"]+)['"]/);
+          const ajaxMatch = body.match(/'ajax'\s*=>\s*(true|false)/i);
+          const isAjax = ajaxMatch ? ajaxMatch[1].toLowerCase() === 'true' : false;
+          const line = content.substring(0, match.index).split('\n').length;
+
+          endpoints.push({
+            method: isAjax ? 'POST (AJAX)' : 'EXTERNAL_API',
+            path: `/webservice/rest/server.php?wsfunction=${fnName}`,
+            handlerName: `${classMatch ? classMatch[1] : fnName}::${methodMatch ? methodMatch[1] : 'execute'}`,
+            filePath: relPath,
+            line,
+            authRequired: true,
+          });
+        }
+        filesScanned++;
+      } catch {
+        // Skip individual unparseable files
+      }
+    }
+
+    // 2. Scan Moodle PHP files in local/ (and custom tool/blocks) for classes, methods, and SQL
+    const phpFiles = await fg(
+      ['local/th_*/**/*.php', 'local/**/*.php', 'admin/tool/th_*/**/*.php'],
+      {
+        cwd: this.projectRoot,
+        ignore: ['**/vendor/**', '**/cache/**', '**/amd/build/**'],
+        absolute: true,
+      }
+    );
+
+    const classRegex = /(?:abstract\s+)?class\s+([a-zA-Z0-9_]+)(?:\s+extends\s+([a-zA-Z0-9_\\]+))?/g;
+    const methodRegex = /public\s+(?:static\s+)?function\s+([a-zA-Z0-9_]+)\s*\(([^)]*)\)/g;
+    const sqlRegex = /\$DB->(?:get_records_sql|get_record_sql|get_fieldset_sql|execute)\s*\(\s*(["'])([\s\S]*?)\1/g;
+
+    for (const pf of phpFiles) {
+      try {
+        const relPath = path.relative(this.projectRoot, pf);
+        const content = fs.readFileSync(pf, 'utf-8');
+        filesScanned++;
+
+        // Extract SQL queries
+        let sqlMatch;
+        while ((sqlMatch = sqlRegex.exec(content)) !== null) {
+          let q = sqlMatch[2].trim().replace(/\s+/g, ' ');
+          // Map Moodle {table} to mdl_table
+          q = q.replace(/\{([a-zA-Z0-9_]+)\}/g, 'mdl_$1');
+          const upper = q.toUpperCase();
+          if (
+            upper.startsWith('SELECT') ||
+            upper.startsWith('UPDATE') ||
+            upper.startsWith('INSERT') ||
+            upper.startsWith('DELETE')
+          ) {
+            let type: ExtractedSql['type'] = 'OTHER';
+            if (upper.startsWith('SELECT')) type = 'SELECT';
+            else if (upper.startsWith('UPDATE')) type = 'UPDATE';
+            else if (upper.startsWith('INSERT')) type = 'INSERT';
+            else if (upper.startsWith('DELETE')) type = 'DELETE';
+
+            const line = content.substring(0, sqlMatch.index).split('\n').length;
+            extractedSqls.push({
+              query: q,
+              filePath: relPath,
+              line,
+              type,
+            });
+          }
+        }
+
+        // Extract classes & methods
+        const nsMatch = content.match(/namespace\s+([a-zA-Z0-9_\\]+);/);
+        const ns = nsMatch ? nsMatch[1] : '';
+
+        let clsMatch;
+        while ((clsMatch = classRegex.exec(content)) !== null) {
+          const className = ns ? `${ns}\\${clsMatch[1]}` : clsMatch[1];
+          const extendsClass = clsMatch[2] || undefined;
+          const methods: ClassInfo['methods'] = [];
+
+          let mMatch;
+          while ((mMatch = methodRegex.exec(content)) !== null) {
+            const mName = mMatch[1];
+            const rawParams = mMatch[2]
+              .split(',')
+              .map((p) => p.trim())
+              .filter(Boolean);
+            const mLine = content.substring(0, mMatch.index).split('\n').length;
+            methods.push({
+              name: mName,
+              filePath: relPath,
+              startLine: mLine,
+              endLine: mLine + 5,
+              parameters: rawParams.map((p) => ({ name: p, type: 'mixed' })),
+              returnType: 'mixed',
+              calls: [],
+              isExported: true,
+              isAsync: false,
+            });
+          }
+
+          classes.push({
+            name: className,
+            filePath: relPath,
+            extendsClass,
+            methods,
+            properties: [],
+          });
+        }
+      } catch {
+        // Skip individual unparseable files
+      }
+    }
+
+    return filesScanned;
   }
 
   /**
@@ -374,7 +574,8 @@ export class CodeAnalyzer {
   private detectConventions(
     sourceFiles: any[],
     endpoints: EndpointInfo[],
-    extractedSqls: ExtractedSql[]
+    extractedSqls: ExtractedSql[],
+    isMoodle?: boolean
   ): CodingConventions {
     const filePaths = sourceFiles.map((f) => f.getFilePath());
 
@@ -383,7 +584,7 @@ export class CodeAnalyzer {
     let architecture: CodingConventions['architecture'] = 'Modular';
     let ormPattern: CodingConventions['ormOrDbTool'] = 'Raw SQL';
 
-    if (filePaths.some((p) => p.includes('version.php') || p.includes('moodle') || p.includes('classes/external'))) {
+    if (isMoodle || filePaths.some((p) => p.includes('version.php') || p.includes('moodle') || p.includes('classes/external'))) {
       framework = 'Moodle 4.1 (LMS)';
       architecture = 'Moodle Plugin Architecture (Modular)';
       ormPattern = 'Moodle $DB (XMLDB / MySQL)';
@@ -409,10 +610,14 @@ export class CodeAnalyzer {
     }
 
     return {
-      naming: 'camelCase',
+      naming: isMoodle ? 'snake_case' : 'camelCase',
       architecture,
       ormOrDbTool: ormPattern,
-      filePattern: framework === 'NestJS' ? '*.controller.ts, *.service.ts' : '*.routes.ts, *.controller.ts, *.service.ts',
+      filePattern: isMoodle
+        ? 'local/th_*/**/*.php, classes/**/*.php, db/*.php'
+        : framework === 'NestJS'
+        ? '*.controller.ts, *.service.ts'
+        : '*.routes.ts, *.controller.ts, *.service.ts',
       hasTypeScript: filePaths.some((p) => p.endsWith('.ts')),
       framework,
     };

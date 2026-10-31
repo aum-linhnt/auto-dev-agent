@@ -2,6 +2,7 @@
 import { Command } from 'commander';
 import { skillRegistry } from './core/skillRegistry';
 import { ContextBuilder } from './context/contextBuilder';
+import { MoodlePluginAnalyzer } from './context/moodlePluginAnalyzer';
 import { createServer } from './api/server';
 import config from './config/env';
 
@@ -73,16 +74,70 @@ program
     console.log(`======================================================\n`);
   });
 
-// 3. Run Skill Command
+// 3. Moodle Plugins Discovery Command
+program
+  .command('plugins')
+  .alias('moodle-plugins')
+  .description('Discover and list all Moodle plugins in the connected Moodle project')
+  .option('-t, --type <type>', 'Filter by plugin type (e.g. local, mod, block, report)')
+  .option('-s, --search <keyword>', 'Search by keyword (name, component, or path)')
+  .action(async (options) => {
+    console.log(`\n🔍 Scanning Moodle plugins in: \x1b[36m${config.paths.projectRoot}\x1b[0m...\n`);
+    let plugins = await MoodlePluginAnalyzer.listPlugins(config.paths.projectRoot);
+
+    if (options.type) {
+      const filterType = options.type.toLowerCase();
+      plugins = plugins.filter((p) => p.type.toLowerCase().includes(filterType));
+    }
+
+    if (options.search) {
+      const q = options.search.toLowerCase();
+      plugins = plugins.filter(
+        (p) =>
+          p.component.toLowerCase().includes(q) ||
+          p.path.toLowerCase().includes(q) ||
+          p.name.toLowerCase().includes(q)
+      );
+    }
+
+    console.log(`======================================================`);
+    console.log(`📦 DISCOVERED MOODLE PLUGINS (${plugins.length})`);
+    console.log(`======================================================\n`);
+
+    for (const p of plugins.slice(0, 30)) {
+      const badge = p.path.includes('th_') || p.path.includes('th') ? '\x1b[32m[TNU CUSTOM]\x1b[0m' : '\x1b[34m[CORE/PLUGIN]\x1b[0m';
+      console.log(`👉 \x1b[36m${p.path}\x1b[0m ${badge}`);
+      console.log(`   Component: \x1b[1m${p.component}\x1b[0m | Phiên bản: ${p.version || 'N/A'}${p.release ? ` (${p.release})` : ''}`);
+      console.log(`   Tên hiển thị: ${p.name}`);
+      const features: string[] = [];
+      if (p.hasXmlDb) features.push('XMLDB');
+      if (p.hasServices) features.push('WebServices');
+      if (p.hasTasks) features.push('Tasks');
+      if (features.length > 0) {
+        console.log(`   Đặc tính: \x1b[33m${features.join(', ')}\x1b[0m`);
+      }
+      console.log('');
+    }
+
+    if (plugins.length > 30) {
+      console.log(`... and ${plugins.length - 30} more plugins. Use -s <keyword> to narrow down search.`);
+    }
+
+    console.log(`💡 Mẹo: Sinh tài liệu nhanh cho plugin bằng lệnh:`);
+    console.log(`   npm run cli -- run doc-gen -p <plugin-path> -T srs\n`);
+  });
+
+// 4. Run Skill Command
 program
   .command('run <skillId>')
   .description('Execute a specific skill (e.g. doc-gen, code-gen, code-review, sql-optimizer)')
+  .option('-p, --plugin <path>', 'Moodle plugin directory or component (e.g. local/th_coursesetup)')
   .option('-f, --feature <name>', 'Feature name')
   .option('-r, --requirements <text>', 'Functional or technical requirements')
   .option('-m, --module <name>', 'Target module name')
   .option('-g, --git-diff <target>', 'Git diff target branch or commit')
   .option('-t, --template <path>', 'Custom Word template .docx path')
-  .option('-T, --doc-type <type>', 'Document type for doc-gen: all | brd | srs | sad | guide', 'all')
+  .option('-T, --doc-type <type>', 'Document type for doc-gen: srs | sad | brd | guide', 'srs')
   .option('-o, --output <filename>', 'Output file name')
   .option('-d, --dry-run', 'Dry run without modifying code files', false)
   .action(async (skillId, options) => {
@@ -100,6 +155,7 @@ program
         dryRun: options.dryRun,
         customParams: {
           docType: options.docType,
+          pluginPath: options.plugin,
         },
       });
 

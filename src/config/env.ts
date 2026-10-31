@@ -1,5 +1,6 @@
 import dotenv from 'dotenv';
 import path from 'path';
+import fs from 'fs';
 
 // Load .env file
 dotenv.config();
@@ -29,9 +30,35 @@ export interface AppConfig {
   kroki: {
     url: string;
   };
+  readOnlyProjectRoot: boolean;
 }
 
-const projectRoot = path.resolve(process.cwd(), process.env.PROJECT_ROOT || '.');
+function resolveProjectRoot(input?: string): string {
+  if (!input || input.trim() === '' || input === '.') {
+    return process.cwd();
+  }
+
+  let raw = input.trim();
+  // Normalize potential missing leading slash for linux system paths
+  if (!path.isAbsolute(raw) && (raw.startsWith('var/www') || raw.startsWith('home/'))) {
+    raw = '/' + raw;
+  }
+
+  if (fs.existsSync(raw)) {
+    return path.resolve(raw);
+  }
+
+  // Common shorthand fallback: /var/www/tnu -> /var/www/html/tnu
+  if (raw === '/var/www/tnu' || raw === 'var/www/tnu') {
+    if (fs.existsSync('/var/www/html/tnu')) {
+      return '/var/www/html/tnu';
+    }
+  }
+
+  return path.resolve(process.cwd(), raw);
+}
+
+const projectRoot = resolveProjectRoot(process.env.PROJECT_ROOT);
 
 export const config: AppConfig = {
   gemini: {
@@ -58,6 +85,7 @@ export const config: AppConfig = {
   kroki: {
     url: process.env.KROKI_URL || 'https://kroki.io/mermaid/png',
   },
+  readOnlyProjectRoot: process.env.READ_ONLY_PROJECT_ROOT !== 'false',
 };
 
 export default config;

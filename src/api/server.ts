@@ -2,9 +2,11 @@ import express, { Request, Response } from 'express';
 import cors from 'cors';
 import path from 'path';
 import fs from 'fs';
+import { exec } from 'child_process';
 import config from '../config/env';
 import { skillRegistry } from '../core/skillRegistry';
 import { ContextBuilder } from '../context/contextBuilder';
+import { MoodlePluginAnalyzer } from '../context/moodlePluginAnalyzer';
 import { SkillInput } from '../core/types';
 
 export function createServer() {
@@ -86,6 +88,38 @@ export function createServer() {
     }
   });
 
+  // GET /api/moodle/plugins - List all detected Moodle plugins
+  app.get('/api/moodle/plugins', async (req: Request, res: Response) => {
+    try {
+      const plugins = await MoodlePluginAnalyzer.listPlugins(config.paths.projectRoot);
+      res.json({
+        success: true,
+        count: plugins.length,
+        plugins,
+      });
+    } catch (err: any) {
+      res.status(500).json({ success: false, error: err.message });
+    }
+  });
+
+  // GET /api/moodle/plugin-detail - Deep analysis of a specific plugin
+  app.get('/api/moodle/plugin-detail', async (req: Request, res: Response) => {
+    try {
+      const pluginPath = req.query.path as string;
+      if (!pluginPath) {
+        return res.status(400).json({ success: false, error: 'Thiếu tham số query "path"' });
+      }
+
+      const detail = await MoodlePluginAnalyzer.analyzePlugin(config.paths.projectRoot, pluginPath);
+      res.json({
+        success: true,
+        plugin: detail,
+      });
+    } catch (err: any) {
+      res.status(500).json({ success: false, error: err.message });
+    }
+  });
+
   // GET /api/context - Get Unified Project Context
   app.get('/api/context', async (req: Request, res: Response) => {
     try {
@@ -144,6 +178,15 @@ export function createServer() {
 
       const files = fs.readdirSync(outDir);
       const artifacts = files
+        .filter((file) => {
+          if (file.startsWith('.')) return false;
+          try {
+            const filePath = path.join(outDir, file);
+            return fs.statSync(filePath).isFile();
+          } catch {
+            return false;
+          }
+        })
         .map((file) => {
           const filePath = path.join(outDir, file);
           const stat = fs.statSync(filePath);
@@ -182,6 +225,90 @@ export function createServer() {
       res.json({ success: true, fileName, content });
     } catch (err: any) {
       res.status(500).json({ success: false, error: err.message });
+    }
+  });
+
+  // GET /api/artifacts/preview/:fileName - Stream direct preview (converts .docx to PDF via LibreOffice for crystal clear viewing)
+  app.get('/api/artifacts/preview/:fileName', async (req: Request, res: Response) => {
+    try {
+      const param = req.params.fileName;
+      const rawName = Array.isArray(param) ? param[0] : param;
+      const fileName = path.basename(rawName);
+      const filePath = path.join(config.paths.outputDir, fileName);
+
+      if (!fs.existsSync(filePath)) {
+        return res.status(404).send('Không tìm thấy tệp yêu cầu.');
+      }
+
+      const ext = path.extname(fileName).toLowerCase();
+
+      // For Word (.docx), convert to high-fidelity PDF and stream inline
+      if (ext === '.docx') {
+        const baseName = path.basename(fileName, ext);
+        const cacheDir = path.join(config.paths.outputDir, '.pdf_cache');
+        if (!fs.existsSync(cacheDir)) {
+          fs.mkdirSync(cacheDir, { recursive: true });
+        }
+
+        const pdfPath = path.join(cacheDir, `${baseName}.pdf`);
+        let needConvert = true;
+
+        if (fs.existsSync(pdfPath)) {
+          const docxStat = fs.statSync(filePath);
+          const pdfStat = fs.statSync(pdfPath);
+          if (pdfStat.mtimeMs >= docxStat.mtimeMs && pdfStat.size > 0) {
+            needConvert = false;
+          }
+        }
+
+        if (needConvert) {
+          console.log(`[Preview API] Đang chuyển đổi "${fileName}" sang PDF để xem trực tiếp...`);
+          await new Promise<void>((resolve, reject) => {
+            exec(`libreoffice --headless --convert-to pdf "${filePath}" --outdir "${cacheDir}"`, (error) => {
+              if (error) {
+                console.error('[Preview API] Lỗi chuyển đổi LibreOffice:', error);
+                return reject(error);
+              }
+              resolve();
+            });
+          });
+        }
+
+        if (!fs.existsSync(pdfPath)) {
+          return res.status(500).send('Không thể tạo bản xem trước PDF từ file Word.');
+        }
+
+        res.setHeader('Content-Type', 'application/pdf');
+        res.setHeader('Content-Disposition', `inline; filename="${encodeURIComponent(baseName)}.pdf"`);
+        return fs.createReadStream(pdfPath).pipe(res);
+      }
+
+      // For PDF
+      if (ext === '.pdf') {
+        res.setHeader('Content-Type', 'application/pdf');
+        res.setHeader('Content-Disposition', `inline; filename="${encodeURIComponent(fileName)}"`);
+        return fs.createReadStream(filePath).pipe(res);
+      }
+
+      // For Images
+      if (['.png', '.jpg', '.jpeg', '.svg', '.webp'].includes(ext)) {
+        const mime =
+          ext === '.png' ? 'image/png' : ext === '.svg' ? 'image/svg+xml' : ext === '.webp' ? 'image/webp' : 'image/jpeg';
+        res.setHeader('Content-Type', mime);
+        return fs.createReadStream(filePath).pipe(res);
+      }
+
+      // For Markdown / Text
+      if (['.md', '.txt', '.json', '.js', '.ts', '.php', '.xml'].includes(ext)) {
+        res.setHeader('Content-Type', 'text/plain; charset=utf-8');
+        return fs.createReadStream(filePath).pipe(res);
+      }
+
+      // Default stream
+      return fs.createReadStream(filePath).pipe(res);
+    } catch (err: any) {
+      console.error('[Preview API Error]', err);
+      res.status(500).send(`Lỗi hệ thống: ${err.message}`);
     }
   });
 
