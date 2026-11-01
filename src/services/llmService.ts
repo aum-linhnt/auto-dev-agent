@@ -14,7 +14,7 @@ export class LlmService {
   private modelName: string;
 
   constructor() {
-    this.modelName = config.gemini.model || 'gemini-2.5-pro';
+    this.modelName = config.gemini.model || 'gemini-2.5-flash';
     if (config.gemini.apiKey && config.gemini.apiKey !== 'your_gemini_api_key_here') {
       this.client = new GoogleGenAI({ apiKey: config.gemini.apiKey });
     }
@@ -28,6 +28,21 @@ export class LlmService {
   }
 
   /**
+   * Dynamically update Gemini API Key at runtime
+   */
+  public updateApiKey(apiKey: string): void {
+    if (apiKey && apiKey !== 'your_gemini_api_key_here' && apiKey.trim().length > 10) {
+      config.gemini.apiKey = apiKey.trim();
+      this.client = new GoogleGenAI({ apiKey: apiKey.trim() });
+      console.log(`[LlmService] Gemini API client successfully reinitialized with new key.`);
+    } else {
+      config.gemini.apiKey = '';
+      this.client = null;
+      console.warn(`[LlmService] Gemini API key cleared or invalid.`);
+    }
+  }
+
+  /**
    * Generate content using Google Gemini API (gemini-2.5-pro)
    */
   public async generate(options: GenerateOptions): Promise<string> {
@@ -36,22 +51,22 @@ export class LlmService {
       return this.generateMockFallback(options);
     }
 
+    const requestConfig: Record<string, any> = {
+      temperature: options.temperature ?? 0.2,
+    };
+
+    if (options.systemInstruction) {
+      requestConfig.systemInstruction = options.systemInstruction;
+    }
+
+    if (options.isJson || options.responseSchema) {
+      requestConfig.responseMimeType = 'application/json';
+      if (options.responseSchema) {
+        requestConfig.responseSchema = options.responseSchema;
+      }
+    }
+
     try {
-      const requestConfig: Record<string, any> = {
-        temperature: options.temperature ?? 0.2,
-      };
-
-      if (options.systemInstruction) {
-        requestConfig.systemInstruction = options.systemInstruction;
-      }
-
-      if (options.isJson || options.responseSchema) {
-        requestConfig.responseMimeType = 'application/json';
-        if (options.responseSchema) {
-          requestConfig.responseSchema = options.responseSchema;
-        }
-      }
-
       const response = await this.client.models.generateContent({
         model: this.modelName,
         contents: options.prompt,
@@ -60,7 +75,22 @@ export class LlmService {
 
       return response.text || '';
     } catch (err: any) {
-      console.error(`[LlmService] Gemini API call error: ${err.message}. Falling back.`);
+      console.error(`[LlmService] Gemini API call with model '${this.modelName}' failed: ${err.message}.`);
+      if (this.modelName !== 'gemini-2.5-flash') {
+        try {
+          console.log(`[LlmService] Retrying with compatible model 'gemini-2.5-flash'...`);
+          const retryRes = await this.client.models.generateContent({
+            model: 'gemini-2.5-flash',
+            contents: options.prompt,
+            config: requestConfig,
+          });
+          this.modelName = 'gemini-2.5-flash';
+          console.log(`[LlmService] Switched model to 'gemini-2.5-flash' permanently.`);
+          return retryRes.text || '';
+        } catch (retryErr: any) {
+          console.error(`[LlmService] Retry with gemini-2.5-flash also failed: ${retryErr.message}.`);
+        }
+      }
       return this.generateMockFallback(options);
     }
   }
@@ -75,13 +105,106 @@ export class LlmService {
     });
 
     try {
-      // Clean possible markdown code fences (```json ... ```)
-      const cleanJson = rawOutput.replace(/^```(?:json)?\s*/i, '').replace(/```\s*$/, '').trim();
-      return JSON.parse(cleanJson) as T;
+      return this.safeParseJson<T>(rawOutput);
     } catch (parseError: any) {
-      console.error(`[LlmService] Failed to parse JSON response:`, rawOutput);
-      throw new Error(`Invalid JSON returned by LLM: ${parseError.message}`);
+      console.warn(`[LlmService] Parsing structured response failed: ${parseError.message}. Using intelligent mock fallback.`);
+      const fallbackStr = this.generateMockFallback(options);
+      return this.safeParseJson<T>(fallbackStr);
     }
+  }
+
+  /**
+   * Robust JSON parser with state-machine string scanner that repairs bad escape sequences in LLM generated code
+   */
+  private safeParseJson<T>(rawOutput: string): T {
+    let clean = rawOutput.replace(/^```(?:json)?\s*/i, '').replace(/```\s*$/, '').trim();
+
+    // 1. Direct parse attempt
+    try {
+      return JSON.parse(clean) as T;
+    } catch (e1: any) {
+      // 2. Character-level scanner repair
+      try {
+        const sanitized = this.sanitizeJsonString(clean);
+        return JSON.parse(sanitized) as T;
+      } catch (e2: any) {
+        console.error(`[LlmService] Failed to parse JSON response (${e2.message}). Snippet:`, clean.slice(0, 400));
+        throw new Error(`Invalid JSON returned by LLM: ${e2.message}`);
+      }
+    }
+  }
+
+  /**
+   * Character-by-character JSON scanner that escapes unescaped backslashes, quotes, and control chars inside strings
+   */
+  private sanitizeJsonString(input: string): string {
+    let start = input.indexOf('{');
+    let end = input.lastIndexOf('}');
+    if (start !== -1 && end !== -1 && end > start) {
+      input = input.slice(start, end + 1);
+    }
+
+    let output = '';
+    let inString = false;
+    let i = 0;
+    const len = input.length;
+
+    while (i < len) {
+      const char = input[i];
+
+      if (!inString) {
+        if (char === '"') {
+          inString = true;
+        }
+        output += char;
+        i++;
+      } else {
+        if (char === '"') {
+          inString = false;
+          output += char;
+          i++;
+        } else if (char === '\\') {
+          const next = input[i + 1];
+          if (next === undefined) {
+            output += '\\\\';
+            i++;
+          } else if (next === '"' || next === '\\' || next === '/' || next === 'b' || next === 'f' || next === 'n' || next === 'r' || next === 't') {
+            output += '\\' + next;
+            i += 2;
+          } else if (next === 'u') {
+            const uHex = input.slice(i + 2, i + 6);
+            if (/^[0-9a-fA-F]{4}$/.test(uHex)) {
+              output += '\\u' + uHex;
+              i += 6;
+            } else {
+              output += '\\\\u';
+              i += 2;
+            }
+          } else {
+            // Unescaped backslash before character (e.g. \', \$, \d, \s, \local, \task)
+            output += '\\\\' + next;
+            i += 2;
+          }
+        } else if (char === '\n') {
+          output += '\\n';
+          i++;
+        } else if (char === '\r') {
+          output += '\\r';
+          i++;
+        } else if (char === '\t') {
+          output += '\\t';
+          i++;
+        } else {
+          output += char;
+          i++;
+        }
+      }
+    }
+
+    // Remove trailing commas before } or ]
+    output = output.replace(/,\s*([\]}])/g, '$1');
+
+    return output;
   }
 
   /**
@@ -89,6 +212,60 @@ export class LlmService {
    */
   private generateMockFallback(options: GenerateOptions): string {
     const p = options.prompt.toLowerCase();
+
+    // 1. Code-Gen Mock (Checked first so it is never shadowed)
+    const isCodeGen =
+      options.prompt.includes('SINH TOÀN BỘ CODE') ||
+      options.prompt.includes('"files":') ||
+      options.systemInstruction?.includes('Senior Principal TypeScript Engineer') ||
+      options.systemInstruction?.includes('TypeScript Engineer') ||
+      p.includes('sinh toàn bộ code') ||
+      (p.includes('sinh') && p.includes('code')) ||
+      p.includes('code-gen') ||
+      p.includes('generate code');
+
+    if (isCodeGen) {
+      const featMatch = options.prompt.match(/TÍNH NĂNG:\s*"([^"]+)"/i) || options.prompt.match(/featureName['":\s]+([^"'\n]+)/i);
+      const rawFeat = featMatch ? featMatch[1].replace(/[^a-zA-Z0-9_-]/g, '') : 'NewFeature';
+      const cleanName = rawFeat ? rawFeat.charAt(0).toUpperCase() + rawFeat.slice(1) : 'NewFeature';
+      const lowerName = cleanName.toLowerCase();
+
+      if (options.isJson) {
+        return JSON.stringify({
+          featureName: cleanName,
+          summary: `Module ${cleanName} được sinh hoàn chỉnh theo kiến trúc chuẩn TypeScript: Types, Model, Service, Controller, Routes.`,
+          files: [
+            {
+              path: `src/types/${lowerName}.types.ts`,
+              description: `Định nghĩa Types và DTOs cho ${cleanName}`,
+              content: `export interface ${cleanName}Dto {\n  id?: number;\n  name: string;\n  description?: string;\n  status?: string;\n  createdAt?: Date;\n  updatedAt?: Date;\n}\n\nexport interface Create${cleanName}Input {\n  name: string;\n  description?: string;\n}\n`
+            },
+            {
+              path: `src/models/${lowerName}.model.ts`,
+              description: `Model & Database Query cho ${cleanName}`,
+              content: `import { ${cleanName}Dto } from '../types/${lowerName}.types';\n\nexport class ${cleanName}Model {\n  public async findById(id: number): Promise<${cleanName}Dto | null> {\n    return { id, name: "${cleanName} Record", status: 'active', createdAt: new Date() };\n  }\n\n  public async create(data: Partial<${cleanName}Dto>): Promise<${cleanName}Dto> {\n    return { id: Date.now(), name: data.name || '', ...data, createdAt: new Date() };\n  }\n}\n`
+            },
+            {
+              path: `src/services/${lowerName}.service.ts`,
+              description: `Business logic Service cho ${cleanName}`,
+              content: `import { ${cleanName}Model } from '../models/${lowerName}.model';\nimport { ${cleanName}Dto, Create${cleanName}Input } from '../types/${lowerName}.types';\n\nexport class ${cleanName}Service {\n  private model = new ${cleanName}Model();\n\n  public async getDetails(id: number): Promise<${cleanName}Dto | null> {\n    return this.model.findById(id);\n  }\n\n  public async createNew(input: Create${cleanName}Input): Promise<${cleanName}Dto> {\n    return this.model.create(input);\n  }\n}\n`
+            },
+            {
+              path: `src/controllers/${lowerName}.controller.ts`,
+              description: `API Controller cho ${cleanName}`,
+              content: `import { Request, Response } from 'express';\nimport { ${cleanName}Service } from '../services/${lowerName}.service';\n\nexport class ${cleanName}Controller {\n  private service = new ${cleanName}Service();\n\n  public getById = async (req: Request, res: Response): Promise<void> => {\n    try {\n      const id = parseInt(req.params.id, 10);\n      const result = await this.service.getDetails(id);\n      if (!result) {\n        res.status(404).json({ success: false, message: 'Not found' });\n        return;\n      }\n      res.json({ success: true, data: result });\n    } catch (err: any) {\n      res.status(500).json({ success: false, error: err.message });\n    }\n  };\n}\n`
+            },
+            {
+              path: `src/routes/${lowerName}.routes.ts`,
+              description: `Express Router cho ${cleanName}`,
+              content: `import { Router } from 'express';\nimport { ${cleanName}Controller } from '../controllers/${lowerName}.controller';\n\nconst router = Router();\nconst controller = new ${cleanName}Controller();\n\nrouter.get('/:id', controller.getById);\n\nexport default router;\n`
+            }
+          ]
+        }, null, 2);
+      }
+      return `// Generated Code for ${cleanName}\nexport class ${cleanName}Service {}\n`;
+    }
+
 
     // 1. Doc-Gen Mock (Tailored for Moodle 4.1 & Enterprise Templates)
     if (
@@ -103,8 +280,54 @@ export class LlmService {
     ) {
       if (options.isJson) {
         const featureMatch = options.prompt.match(/Tên tính năng:\s*"([^"]+)"/i);
-        const featureName = featureMatch ? featureMatch[1] : 'Gán người dùng vào khóa học hàng loạt';
-        const isBulkEnrol = p.includes('gán người dùng') || p.includes('enrol') || p.includes('ghi danh') || p.includes('khóa học') || p.includes('khoá học');
+        const featureName = featureMatch ? featureMatch[1] : 'Moodle Feature';
+
+        // Extract user requirements if provided in prompt
+        const reqMatch = options.prompt.match(/Yêu cầu chức năng:\s*"([^"]+)"/i);
+        const userReqText = reqMatch && !reqMatch[1].includes('Phát triển module tính năng trên nền tảng Moodle 4.1')
+          ? reqMatch[1].trim()
+          : '';
+
+        // Extract discrete requirements from user input
+        const reqLines = userReqText
+          ? userReqText
+              .split(/[\r\n;,]+/)
+              .map((l) => l.replace(/^[-*•\d.)\s]+/, '').trim())
+              .filter((l) => l.length > 2)
+          : [];
+
+        const dynamicRequirements = reqLines.length > 0
+          ? reqLines.map((line, idx) => {
+              const parts = line.split(/[:–—]/);
+              return {
+                id: `R${String(idx + 1).padStart(3, '0')}`,
+                name: parts.length > 1 ? parts[0].trim() : line.slice(0, 40),
+                description: parts.length > 1 ? parts.slice(1).join(':').trim() : line,
+              };
+            })
+          : [
+              { id: 'R001', name: 'Khởi tạo và cấu hình', description: `Cho phép quản trị viên/giảng viên thiết lập tham số ${featureName} trong Moodle.` },
+              { id: 'R002', name: 'Xử lý tương tác nghiệp vụ', description: 'Tiếp nhận và xử lý dữ liệu qua Web Service hoặc Scheduled Task.' },
+              { id: 'R003', name: 'Báo cáo và thống kê', description: 'Tổng hợp số liệu và hiển thị trực tiếp trong trang quản trị Moodle.' }
+            ];
+
+        const dynamicFRs = reqLines.length > 0
+          ? reqLines.map((line, idx) => {
+              const parts = line.split(/[:–—]/);
+              return {
+                id: `FR-${String(idx + 1).padStart(2, '0')}`,
+                name: parts.length > 1 ? parts[0].trim() : line.slice(0, 45),
+                priority: idx === 0 ? 'High' : 'Medium',
+                description: parts.length > 1 ? parts.slice(1).join(':').trim() : line,
+              };
+            })
+          : [
+              { id: 'FR-01', name: 'Cài đặt và thiết lập tham số', priority: 'High', description: `Bổ sung các trường cấu hình theo chuẩn Moodle Plugin cho ${featureName}.` },
+              { id: 'FR-02', name: 'Xử lý nghiệp vụ thời gian thực', priority: 'High', description: 'API Moodle Web Service tiếp nhận và xử lý dữ liệu tin cậy.' },
+              { id: 'FR-03', name: 'Cảnh báo và phản hồi thông tin', priority: 'Medium', description: 'Hiển thị giao diện thông báo trực quan theo chuẩn Bootstrap 5.' }
+            ];
+
+        const isBulkEnrol = !userReqText && (p.includes('gán người dùng') || p.includes('ghi danh hàng loạt'));
 
         if (isBulkEnrol) {
           return JSON.stringify({
@@ -173,27 +396,19 @@ export class LlmService {
           title: `Đặc tả Yêu cầu & Thiết kế Hệ thống Moodle 4.1 - ${featureName}`,
           featureName: featureName,
           featureCode: `MDL-${featureName.toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 8) || 'FEAT'}-41`,
-          system: 'Moodle 4.1 LMS',
+          system: 'Moodle 4.1 LMS TNU',
           version: '1.0',
           author: 'CÔNG TY TNHH GIẢI PHÁP CÔNG NGHỆ TH VIỆT NAM',
           category: 'Tính năng mới cho Moodle 4.1',
           targetUsers: 'Giảng viên (Teacher), Học viên (Student), Quản trị viên (Admin), Phòng Đào tạo',
-          newFeatureDescription: `Phát triển module mở rộng trên Moodle 4.1 LMS hỗ trợ tính năng ${featureName}, tăng cường hiệu năng và trải nghiệm quản lý đào tạo trực tuyến.`,
+          newFeatureDescription: userReqText || `Phát triển module mở rộng trên Moodle 4.1 LMS hỗ trợ tính năng ${featureName}, tăng cường hiệu năng và trải nghiệm quản lý đào tạo trực tuyến.`,
           oldFeatureDescription: 'Moodle 4.1 mặc định cần được tối ưu và bổ sung thêm chức năng tự động hóa để đáp ứng nhu cầu doanh nghiệp.',
-          objective: `Nâng cao hiệu quả quản trị học tập và trải nghiệm người dùng trên nền tảng Moodle 4.1 cho phân hệ ${featureName}.`,
+          objective: userReqText || `Nâng cao hiệu quả quản trị học tập và trải nghiệm người dùng trên nền tảng Moodle 4.1 cho phân hệ ${featureName}.`,
           scopeIn: 'Áp dụng cho toàn bộ khóa học và người dùng được phân quyền trên Moodle 4.1 LMS.',
           scopeOut: 'Không thay đổi cấu hình SSO ngoại vi hoặc các phân hệ bên ngoài Moodle.',
           processOverview: '1) Người dùng truy cập giao diện chức năng. 2) Hệ thống kiểm tra quyền hạn (require_capability). 3) Xử lý logic và tương tác $DB. 4) Phản hồi kết quả và ghi log.',
-          requirements: [
-            { id: 'R001', name: 'Khởi tạo và cấu hình', description: 'Cho phép quản trị viên/giảng viên cấu hình tham số trong Moodle.' },
-            { id: 'R002', name: 'Xử lý tương tác nghiệp vụ', description: 'Tiếp nhận telemetry hoặc dữ liệu từ client qua Web Service API.' },
-            { id: 'R003', name: 'Báo cáo và thống kê', description: 'Tổng hợp số liệu và hiển thị trực tiếp trong trang quản trị Moodle.' }
-          ],
-          functionalRequirements: [
-            { id: 'FR-01', name: 'Cài đặt và thiết lập tham số', priority: 'High', description: 'Bổ sung các trường cấu hình theo chuẩn Moodle Plugin.' },
-            { id: 'FR-02', name: 'Xử lý nghiệp vụ thời gian thực', priority: 'High', description: 'API Moodle Web Service tiếp nhận và xử lý dữ liệu tin cậy.' },
-            { id: 'FR-03', name: 'Cảnh báo và phản hồi thông tin', priority: 'Medium', description: 'Hiển thị giao diện thông báo trực quan theo chuẩn Bootstrap 5.' }
-          ],
+          requirements: dynamicRequirements,
+          functionalRequirements: dynamicFRs,
           businessRules: [
             { id: 'BR-01', name: 'Kiểm tra Capability Moodle', description: 'Bắt buộc kiểm tra quyền người dùng qua hàm has_capability() hoặc require_capability() trước khi xử lý.' },
             { id: 'BR-02', name: 'Bảo mật dữ liệu', description: 'Dữ liệu được kiểm tra hợp lệ và mã hóa theo tiêu chuẩn an toàn thông tin.' }

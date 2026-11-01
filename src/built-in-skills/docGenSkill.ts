@@ -176,6 +176,57 @@ export class DocGenSkill implements ISkill {
         ? 'Giảng viên (Teacher), Học viên (Student), Quản trị viên (Admin), Phòng Đào tạo'
         : 'Giảng viên (Teacher), Quản trị viên hệ thống (Admin), Cán bộ quản lý đào tạo');
 
+    // Synthesize structured requirements for BRD template binding
+    let docRequirements: Array<{ id: string; name: string; description: string }> = [];
+    if (input.requirements && input.requirements.trim().length > 5) {
+      const lines = input.requirements
+        .split(/[\r\n]+/)
+        .map((l) => l.replace(/^[-*•\d.)\s]+/, '').trim())
+        .filter((l) => l.length > 3);
+
+      let rIdx = 1;
+      for (const line of lines) {
+        const parts = line.split(/[:–—]/);
+        const name = parts.length > 1 ? parts[0].trim() : line.slice(0, 40);
+        const desc = parts.length > 1 ? parts.slice(1).join(':').trim() : line;
+        docRequirements.push({
+          id: `R${String(rIdx++).padStart(3, '0')}`,
+          name,
+          description: desc,
+        });
+      }
+    } else if (docData.requirements && docData.requirements.length > 0) {
+      docRequirements = docData.requirements;
+    } else if (pluginDetail) {
+      let rIdx = 1;
+      if (pluginDetail.tasks.length > 0) {
+        for (const t of pluginDetail.tasks) {
+          const shortName = t.classname.split('\\').pop() || t.classname;
+          docRequirements.push({
+            id: `R${String(rIdx++).padStart(3, '0')}`,
+            name: `Tác vụ tự động: ${shortName}`,
+            description: `Thực hiện chạy ngầm theo lịch (${t.schedule}).`,
+          });
+        }
+      }
+      if (pluginDetail.services.length > 0) {
+        for (const s of pluginDetail.services) {
+          docRequirements.push({
+            id: `R${String(rIdx++).padStart(3, '0')}`,
+            name: s.description || s.name,
+            description: `Web Service API: ${s.classname}::${s.methodname}`,
+          });
+        }
+      }
+    }
+
+    if (docRequirements.length === 0) {
+      docRequirements = [
+        { id: 'R001', name: 'Cấu hình và tham số', description: `Cấu hình tham số cho tính năng ${featureName}` },
+        { id: 'R002', name: 'Xử lý nghiệp vụ tự động', description: 'Xử lý dữ liệu và lưu vào cơ sở dữ liệu Moodle' },
+      ];
+    }
+
     const baseData = {
       featureName: docData.featureName || featureName,
       featureCode: docFeatureCode,
@@ -186,13 +237,14 @@ export class DocGenSkill implements ISkill {
       category: docData.category || (pluginDetail ? `Phân hệ Moodle: ${pluginDetail.type}` : 'Tính năng Moodle 4.1'),
       targetUsers: docTargetUsers,
       newFeatureDescription:
+        input.requirements ||
         docData.newFeatureDescription ||
         docData.objective ||
         pluginDetail?.description ||
-        input.requirements ||
         `Module ${featureName} trên hệ thống Moodle 4.1`,
       oldFeatureDescription:
         docData.oldFeatureDescription || 'Hiện trạng quy trình quản lý trước đây cần được số hóa và tự động hóa trên Moodle 4.1.',
+      requirements: docRequirements,
       content,
       noiDung: content,
       documentContent: content,
@@ -354,10 +406,12 @@ TRẢ VỀ JSON FORMAT CHUẨN:
       // 2.1. Mục tiêu và phạm vi hệ thống
       parts.push(WordXmlBuilder.heading2('2.1. Mục tiêu và phạm vi hệ thống'));
       const objectiveText =
-        docData.objective ||
-        (pluginDetail
-          ? `Triển khai phân hệ "${pluginDetail.name}" (${pluginDetail.component}) trên hệ thống Moodle 4.1 LMS TNU, nhằm ${pluginDetail.description || 'nâng cao tính tự động hóa và tối ưu quy trình quản trị đào tạo'}.`
-          : `Phát triển và hoàn thiện tính năng "${featureName}" trên nền tảng Moodle 4.1 LMS, tối ưu hóa quy trình quản trị đào tạo và nâng cao tính tự động hóa.`);
+        input.requirements && input.requirements.trim().length > 5
+          ? input.requirements.trim()
+          : (docData.objective ||
+            (pluginDetail
+              ? `Triển khai phân hệ "${pluginDetail.name}" (${pluginDetail.component}) trên hệ thống Moodle 4.1 LMS TNU, nhằm ${pluginDetail.description || 'nâng cao tính tự động hóa và tối ưu quy trình quản trị đào tạo'}.`
+              : `Phát triển và hoàn thiện tính năng "${featureName}" trên nền tảng Moodle 4.1 LMS, tối ưu hóa quy trình quản trị đào tạo và nâng cao tính tự động hóa.`));
       parts.push(WordXmlBuilder.bullet('Mục tiêu xây dựng', objectiveText));
       parts.push(
         WordXmlBuilder.bullet(
@@ -399,41 +453,60 @@ TRẢ VỀ JSON FORMAT CHUẨN:
       parts.push(WordXmlBuilder.paragraph('Dưới đây là bảng tổng hợp các yêu cầu chức năng cần phát triển:'));
 
       let frs: Array<{ id: string; name: string; priority: string; description: string }> = [];
+      let frIdx = 1;
+
+      // 1. Ưu tiên hàng đầu: Bóc tách từng yêu cầu do người dùng tự nhập trong input
+      if (input.requirements && input.requirements.trim().length > 5) {
+        const lines = input.requirements
+          .split(/[\r\n]+/)
+          .map((l) => l.replace(/^[-*•\d.)\s]+/, '').trim())
+          .filter((l) => l.length > 3);
+
+        for (const line of lines) {
+          const parts = line.split(/[:–—]/);
+          const name = parts.length > 1 ? parts[0].trim() : line.slice(0, 45);
+          const desc = parts.length > 1 ? parts.slice(1).join(':').trim() : line;
+          frs.push({
+            id: `FR-${String(frIdx++).padStart(2, '0')}`,
+            name,
+            priority: 'Cao',
+            description: desc,
+          });
+        }
+      }
+
+      // 2. Bổ sung các tác vụ, web services và cấu hình từ mã nguồn thực tế của plugin
       if (pluginDetail) {
-        let frIdx = 1;
-        if (pluginDetail.settings.length > 0) {
-          frs.push({
-            id: `FR-${String(frIdx++).padStart(2, '0')}`,
-            name: 'Quản trị Cấu hình Phân hệ',
-            priority: 'Cao',
-            description: `Thiết lập các tham số hệ thống (${pluginDetail.settings.map((s) => s.title || s.name).slice(0, 2).join(', ')})`,
-          });
-        }
-        for (const s of pluginDetail.services) {
-          frs.push({
-            id: `FR-${String(frIdx++).padStart(2, '0')}`,
-            name: s.description || s.name,
-            priority: 'Cao',
-            description: `Web Service [${s.name}]: ${s.classname}::${s.methodname}`,
-          });
-        }
         if (pluginDetail.tasks.length > 0) {
           for (const t of pluginDetail.tasks) {
+            const shortName = t.classname.split('\\').pop() || t.classname;
             frs.push({
               id: `FR-${String(frIdx++).padStart(2, '0')}`,
-              name: 'Tiến trình Chạy ngầm (Cron)',
-              priority: 'Trung bình',
-              description: `Scheduled Task: ${t.classname} (${t.schedule})`,
+              name: `Tác vụ Cron: ${shortName}`,
+              priority: 'Cao',
+              description: `Tiến trình tự động: ${t.classname} theo lịch (${t.schedule}).`,
             });
           }
         }
-        frs.push({
-          id: `FR-${String(frIdx++).padStart(2, '0')}`,
-          name: 'Giao diện & Tương tác Người dùng',
-          priority: 'Trung bình',
-          description: `Template Mustache & AMD JavaScript xử lý tương tác thời gian thực`,
-        });
-      } else {
+        if (pluginDetail.services.length > 0) {
+          for (const s of pluginDetail.services) {
+            frs.push({
+              id: `FR-${String(frIdx++).padStart(2, '0')}`,
+              name: s.description || s.name,
+              priority: 'Cao',
+              description: `Web Service API [${s.name}]: ${s.classname}::${s.methodname}`,
+            });
+          }
+        }
+        if (pluginDetail.settings.length > 0) {
+          frs.push({
+            id: `FR-${String(frIdx++).padStart(2, '0')}`,
+            name: 'Quản trị Cấu hình & Tham số',
+            priority: 'Trung bình',
+            description: `Thiết lập hệ thống: ${pluginDetail.settings.map((s) => s.title || s.name).slice(0, 4).join(', ')}.`,
+          });
+        }
+      } else if (frs.length === 0) {
         frs = docData.functionalRequirements || [
           { id: 'FR-01', name: 'Khởi tạo & Cấu hình Plugin', priority: 'Cao', description: 'Tích hợp vào Moodle 4.1 qua chuẩn Frankenstyle' },
           { id: 'FR-02', name: 'Xử lý tương tác thời gian thực', priority: 'Cao', description: 'Nhận telemetry qua AJAX/Web Service, validate và lưu vào $DB' },

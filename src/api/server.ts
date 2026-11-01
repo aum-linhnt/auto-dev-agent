@@ -37,6 +37,44 @@ export function createServer() {
     });
   });
 
+  // POST /api/config/gemini - Dynamically configure and persist Gemini API Key
+  app.post('/api/config/gemini', (req: Request, res: Response) => {
+    try {
+      const { apiKey } = req.body;
+      if (!apiKey || typeof apiKey !== 'string' || apiKey.trim().length < 8) {
+        return res.status(400).json({
+          success: false,
+          error: 'Khóa API không hợp lệ. Vui lòng nhập Gemini API Key hợp lệ (thường bắt đầu bằng AIzaSy...).',
+        });
+      }
+
+      const cleanKey = apiKey.trim();
+      config.gemini.apiKey = cleanKey;
+
+      // Persist to .env file
+      const envPath = path.resolve(process.cwd(), '.env');
+      if (fs.existsSync(envPath)) {
+        let envContent = fs.readFileSync(envPath, 'utf-8');
+        if (/^GEMINI_API_KEY=.*$/m.test(envContent)) {
+          envContent = envContent.replace(/^GEMINI_API_KEY=.*$/m, `GEMINI_API_KEY=${cleanKey}`);
+        } else {
+          envContent = `GEMINI_API_KEY=${cleanKey}\n` + envContent;
+        }
+        fs.writeFileSync(envPath, envContent, 'utf-8');
+      }
+
+      console.log(`[Server] Google Gemini API Key updated and persisted to .env successfully.`);
+      return res.json({
+        success: true,
+        message: 'Đã lưu cấu hình Google Gemini API Key thành công!',
+        llmConfigured: true,
+        model: config.gemini.model,
+      });
+    } catch (err: any) {
+      return res.status(500).json({ success: false, error: err.message });
+    }
+  });
+
   // GET /api/skills - List all skills
   app.get('/api/skills', async (req: Request, res: Response) => {
     try {

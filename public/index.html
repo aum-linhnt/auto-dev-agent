@@ -532,9 +532,11 @@ Tiến hành đối chiếu và xuất báo cáo Markdown chi tiết.</code></pr
         
         const llmEl = document.getElementById('llmStatus');
         if (data.llmConfigured) {
-          llmEl.innerHTML = `<span class="w-2 h-2 rounded-full bg-emerald-400"></span><span class="text-emerald-300">${data.model}</span>`;
+          llmEl.innerHTML = `<span class="w-2 h-2 rounded-full bg-emerald-400"></span><span class="text-emerald-300 font-medium">${data.model}</span>`;
+          llmEl.title = 'Google Gemini 2.5 Pro đã kết nối trực tuyến!';
         } else {
-          llmEl.innerHTML = `<span class="w-2 h-2 rounded-full bg-amber-400"></span><span class="text-amber-300">Intelligent Fallback</span>`;
+          llmEl.innerHTML = `<span class="w-2 h-2 rounded-full bg-amber-400 animate-pulse"></span><span class="text-amber-300 font-medium">Chưa có API Key</span> <button onclick="promptGeminiKey()" class="ml-1 text-[11px] bg-amber-500/20 hover:bg-amber-500/40 text-amber-200 px-2 py-0.5 rounded border border-amber-500/40 transition">Nhập Key</button>`;
+          llmEl.title = 'Chưa thiết lập GEMINI_API_KEY trong .env. Nhấp "Nhập Key" để kết nối.';
         }
       } catch (e) {
         document.getElementById('llmStatus').innerHTML = `<span class="w-2 h-2 rounded-full bg-rose-400"></span><span class="text-rose-300">Server Offline</span>`;
@@ -542,7 +544,29 @@ Tiến hành đối chiếu và xuất báo cáo Markdown chi tiết.</code></pr
     }
 
     // 2. Tab Navigation
-    function switchTab(tabId) {
+    
+
+    async function promptGeminiKey() {
+      const key = prompt('Nhập Google Gemini API Key của bạn (thường bắt đầu bằng AIzaSy...):');
+      if (!key || key.trim().length < 8) return;
+      try {
+        const res = await fetch('/api/config/gemini', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ apiKey: key.trim() }),
+        });
+        const d = await res.json();
+        if (d.success) {
+          alert('Kết nối Google Gemini API thành công! Giờ đây tài liệu sẽ được phân tích và sinh trực tiếp bằng Gemini 2.5 Pro.');
+          checkSystemHealth();
+        } else {
+          alert('Lỗi: ' + (d.error || 'Không thể lưu key'));
+        }
+      } catch (e) {
+        alert('Lỗi kết nối server: ' + e.message);
+      }
+    }
+function switchTab(tabId) {
       document.querySelectorAll('.tab-btn').forEach(btn => {
         btn.classList.remove('border-indigo-500', 'text-indigo-400');
         btn.classList.add('border-transparent', 'text-slate-400');

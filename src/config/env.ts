@@ -63,7 +63,7 @@ const projectRoot = resolveProjectRoot(process.env.PROJECT_ROOT);
 export const config: AppConfig = {
   gemini: {
     apiKey: process.env.GEMINI_API_KEY || '',
-    model: process.env.GEMINI_MODEL || 'gemini-2.5-pro',
+    model: process.env.GEMINI_MODEL || 'gemini-2.5-flash',
   },
   server: {
     port: parseInt(process.env.PORT || '3000', 10),
