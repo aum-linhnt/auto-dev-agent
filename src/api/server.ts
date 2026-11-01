@@ -242,45 +242,151 @@ export function createServer() {
 
       const ext = path.extname(fileName).toLowerCase();
 
-      // For Word (.docx), convert to high-fidelity PDF and stream inline
+      // For Word (.docx), stream high-fidelity HTML preview using docx-preview
       if (ext === '.docx') {
-        const baseName = path.basename(fileName, ext);
-        const cacheDir = path.join(config.paths.outputDir, '.pdf_cache');
-        if (!fs.existsSync(cacheDir)) {
-          fs.mkdirSync(cacheDir, { recursive: true });
-        }
+        const viewerHtml = `<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>${fileName} - Xem trước Word</title>
+  <script src="/vendor/jszip.min.js"></script>
+  <script src="/vendor/docx-preview.min.js"></script>
+  <style>
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      padding: 0;
+      background: #090d16;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+    }
+    .topbar {
+      position: sticky;
+      top: 0;
+      z-index: 100;
+      background: #0f172a;
+      border-bottom: 1px solid #1e293b;
+      padding: 10px 20px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      color: #e2e8f0;
+      box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.3);
+    }
+    .topbar .title {
+      font-size: 13px;
+      font-weight: 600;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .topbar .actions {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+    .topbar .btn {
+      background: #4f46e5;
+      color: white;
+      text-decoration: none;
+      padding: 6px 14px;
+      border-radius: 6px;
+      font-size: 12px;
+      font-weight: 600;
+      transition: all 0.2s;
+    }
+    .topbar .btn:hover { background: #4338ca; }
+    .viewer-container {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      padding: 24px 12px;
+      overflow-y: auto;
+    }
+    .docx-wrapper {
+      background: transparent !important;
+      padding: 0 !important;
+      display: flex !important;
+      flex-direction: column !important;
+      align-items: center !important;
+      width: 100% !important;
+    }
+    .docx-wrapper > section.docx {
+      background: #ffffff !important;
+      color: #000000 !important;
+      box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.6), 0 8px 10px -6px rgba(0, 0, 0, 0.6) !important;
+      margin-bottom: 24px !important;
+      border-radius: 2px !important;
+    }
+    .loading-box {
+      color: #94a3b8;
+      font-size: 13px;
+      margin-top: 60px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 14px;
+    }
+    .spinner {
+      border: 3px solid rgba(255,255,255,0.1);
+      border-top-color: #6366f1;
+      border-radius: 50%;
+      width: 28px;
+      height: 28px;
+      animation: spin 0.8s linear infinite;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+  </style>
+</head>
+<body>
+  <div class="topbar">
+    <div class="title">
+      📄 <span>${fileName}</span>
+    </div>
+    <div class="actions">
+      <a class="btn" href="/output/${encodeURIComponent(fileName)}" download>⬇ Tải về Word (.docx)</a>
+    </div>
+  </div>
+  <div class="viewer-container">
+    <div id="loading" class="loading-box">
+      <div class="spinner"></div>
+      <span>Đang tải và hiển thị tài liệu Word (giữ nguyên định dạng & sơ đồ)...</span>
+    </div>
+    <div id="docx-output"></div>
+  </div>
+  <script>
+    fetch('/output/${encodeURIComponent(fileName)}')
+      .then(res => {
+        if (!res.ok) throw new Error('Không thể tải file: ' + res.statusText);
+        return res.blob();
+      })
+      .then(blob => {
+        return docx.renderAsync(blob, document.getElementById('docx-output'), null, {
+          breakPages: true,
+          inWrapper: true,
+          ignoreWidth: false,
+          ignoreHeight: false
+        });
+      })
+      .then(() => {
+        document.getElementById('loading').style.display = 'none';
+      })
+      .catch(err => {
+        document.getElementById('loading').innerHTML = '<span style="color:#f87171">Lỗi hiển thị Word: ' + err.message + '</span>';
+      });
+  </script>
+</body>
+</html>`;
 
-        const pdfPath = path.join(cacheDir, `${baseName}.pdf`);
-        let needConvert = true;
-
-        if (fs.existsSync(pdfPath)) {
-          const docxStat = fs.statSync(filePath);
-          const pdfStat = fs.statSync(pdfPath);
-          if (pdfStat.mtimeMs >= docxStat.mtimeMs && pdfStat.size > 0) {
-            needConvert = false;
-          }
-        }
-
-        if (needConvert) {
-          console.log(`[Preview API] Đang chuyển đổi "${fileName}" sang PDF để xem trực tiếp...`);
-          await new Promise<void>((resolve, reject) => {
-            exec(`libreoffice --headless --convert-to pdf "${filePath}" --outdir "${cacheDir}"`, (error) => {
-              if (error) {
-                console.error('[Preview API] Lỗi chuyển đổi LibreOffice:', error);
-                return reject(error);
-              }
-              resolve();
-            });
-          });
-        }
-
-        if (!fs.existsSync(pdfPath)) {
-          return res.status(500).send('Không thể tạo bản xem trước PDF từ file Word.');
-        }
-
-        res.setHeader('Content-Type', 'application/pdf');
-        res.setHeader('Content-Disposition', `inline; filename="${encodeURIComponent(baseName)}.pdf"`);
-        return fs.createReadStream(pdfPath).pipe(res);
+        res.setHeader('Content-Type', 'text/html; charset=utf-8');
+        return res.send(viewerHtml);
       }
 
       // For PDF
