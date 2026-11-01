@@ -145,53 +145,63 @@ export class DbAnalyzer {
       [dbName]
     );
 
+    // Pre-group columns, indexes, and FKs by table name for O(1) lookup
+    const colMap = new Map<string, ColumnDefinition[]>();
+    for (const c of columnRows) {
+      const t = c.TABLE_NAME;
+      if (!colMap.has(t)) colMap.set(t, []);
+      colMap.get(t)!.push({
+        name: c.COLUMN_NAME,
+        type: c.COLUMN_TYPE || c.DATA_TYPE,
+        nullable: c.IS_NULLABLE === 'YES',
+        isPrimaryKey: c.COLUMN_KEY === 'PRI',
+        isForeignKey: c.COLUMN_KEY === 'MUL',
+        defaultValue: c.COLUMN_DEFAULT,
+        extra: c.EXTRA || '',
+        comment: c.COLUMN_COMMENT || '',
+      });
+    }
+
+    const indexMapByTable = new Map<string, Map<string, IndexDefinition>>();
+    for (const idx of indexRows) {
+      const t = idx.TABLE_NAME;
+      if (!indexMapByTable.has(t)) indexMapByTable.set(t, new Map());
+      const tMap = indexMapByTable.get(t)!;
+      if (!tMap.has(idx.INDEX_NAME)) {
+        tMap.set(idx.INDEX_NAME, {
+          name: idx.INDEX_NAME,
+          columns: [idx.COLUMN_NAME],
+          isUnique: idx.NON_UNIQUE === 0,
+          type: idx.INDEX_TYPE || 'BTREE',
+        });
+      } else {
+        tMap.get(idx.INDEX_NAME)!.columns.push(idx.COLUMN_NAME);
+      }
+    }
+
+    const fkMap = new Map<string, ForeignKeyDefinition[]>();
+    for (const f of fkRows) {
+      const t = f.FROM_TABLE;
+      if (!fkMap.has(t)) fkMap.set(t, []);
+      fkMap.get(t)!.push({
+        constraintName: f.CONSTRAINT_NAME,
+        fromTable: f.FROM_TABLE,
+        fromColumn: f.FROM_COLUMN,
+        toTable: f.TO_TABLE,
+        toColumn: f.TO_COLUMN,
+        isImplicit: false,
+        source: 'HARD_FK',
+      });
+    }
+
     const tables: TableDefinition[] = [];
 
     for (const tRow of tableRows) {
       const tableName = tRow.TABLE_NAME;
-
-      // Table columns
-      const cols: ColumnDefinition[] = columnRows
-        .filter((c: any) => c.TABLE_NAME === tableName)
-        .map((c: any) => ({
-          name: c.COLUMN_NAME,
-          type: c.COLUMN_TYPE || c.DATA_TYPE,
-          nullable: c.IS_NULLABLE === 'YES',
-          isPrimaryKey: c.COLUMN_KEY === 'PRI',
-          isForeignKey: c.COLUMN_KEY === 'MUL',
-          defaultValue: c.COLUMN_DEFAULT,
-          extra: c.EXTRA || '',
-          comment: c.COLUMN_COMMENT || '',
-        }));
-
-      // Table indexes
-      const tableIndexes = indexRows.filter((i: any) => i.TABLE_NAME === tableName);
-      const indexMap = new Map<string, IndexDefinition>();
-      for (const idx of tableIndexes) {
-        if (!indexMap.has(idx.INDEX_NAME)) {
-          indexMap.set(idx.INDEX_NAME, {
-            name: idx.INDEX_NAME,
-            columns: [idx.COLUMN_NAME],
-            isUnique: idx.NON_UNIQUE === 0,
-            type: idx.INDEX_TYPE || 'BTREE',
-          });
-        } else {
-          indexMap.get(idx.INDEX_NAME)!.columns.push(idx.COLUMN_NAME);
-        }
-      }
-
-      // Foreign keys
-      const fks: ForeignKeyDefinition[] = fkRows
-        .filter((f: any) => f.FROM_TABLE === tableName)
-        .map((f: any) => ({
-          constraintName: f.CONSTRAINT_NAME,
-          fromTable: f.FROM_TABLE,
-          fromColumn: f.FROM_COLUMN,
-          toTable: f.TO_TABLE,
-          toColumn: f.TO_COLUMN,
-          isImplicit: false,
-          source: 'HARD_FK',
-        }));
+      const cols = colMap.get(tableName) || [];
+      const tIndexMap = indexMapByTable.get(tableName);
+      const indexes = tIndexMap ? Array.from(tIndexMap.values()) : [];
+      const fks = fkMap.get(tableName) || [];
 
       tables.push({
         name: tableName,
@@ -199,7 +209,7 @@ export class DbAnalyzer {
         engine: tRow.ENGINE || undefined,
         rowCountEstimate: tRow.TABLE_ROWS ? Number(tRow.TABLE_ROWS) : undefined,
         columns: cols,
-        indexes: Array.from(indexMap.values()),
+        indexes,
         foreignKeys: fks,
       });
     }

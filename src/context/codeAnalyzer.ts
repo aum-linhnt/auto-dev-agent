@@ -200,7 +200,14 @@ export class CodeAnalyzer {
 
     // 2. Scan Moodle PHP files in local/ (and custom tool/blocks) for classes, methods, and SQL
     const phpFiles = await fg(
-      ['local/th_*/**/*.php', 'local/**/*.php', 'admin/tool/th_*/**/*.php'],
+      [
+        'local/th_*/**/*.php',
+        'local/**/*.php',
+        'blocks/th_*/**/*.php',
+        'admin/tool/th_*/**/*.php',
+        'enrol/th_*/**/*.php',
+        'mod/th_*/**/*.php',
+      ],
       {
         cwd: this.projectRoot,
         ignore: ['**/vendor/**', '**/cache/**', '**/amd/build/**'],
